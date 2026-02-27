@@ -1,0 +1,152 @@
+<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Эффект Бабочки</title>
+    <link rel="stylesheet" href="/style.css" />
+    <script defer src="/app.js"></script>
+  </head>
+  <body>
+    <main class="page">
+      <section class="hero">
+        <p class="eyebrow">Альтернативная история</p>
+        <h1>Эффект Бабочки</h1>
+        <p class="subtitle">
+          Напишите реальное историческое событие, а ИИ построит гипотезу: что
+          было бы, если все пошло иначе.
+        </p>
+      </section>
+
+      <section class="chat-card">
+        <form id="event-form" class="form">
+          <label for="event-input">Историческое событие</label>
+          <textarea
+            id="event-input"
+            name="event"
+            rows="4"
+            placeholder="Например: Что если Карибский кризис в 1962 году не удалось бы деэскалировать?"
+            required
+          ></textarea>
+          <div class="input-actions">
+            <div class="examples" aria-label="Готовые примеры">
+              <p class="examples-title">Быстрый старт:</p>
+              <div class="examples-list">
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Карибский кризис 1962 года перешел в прямой военный конфликт?"
+                >
+                  Карибский кризис
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Византия удержала Константинополь в 1453 году?"
+                >
+                  Падение Константинополя
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если высадка в Нормандии в 1944 году провалилась?"
+                >
+                  Высадка в Нормандии
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Юлий Цезарь не был убит в 44 году до н.э.?"
+                >
+                  Юлий Цезарь
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Великая Армада Испании победила Англию в 1588 году?"
+                >
+                  Испанская Армада
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Наполеон выиграл битву при Ватерлоо в 1815 году?"
+                >
+                  Ватерлоо
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Российская империя избежала революции 1917 года?"
+                >
+                  Революция 1917
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если Римская империя не распалась на западную и восточную части?"
+                >
+                  Римская империя
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если полет Гагарина в 1961 году не состоялся?"
+                >
+                  Космическая гонка
+                </button>
+                <button
+                  type="button"
+                  class="example-btn"
+                  data-event="Что если СССР не распался в 1991 году?"
+                >
+                  Распад СССР
+                </button>
+              </div>
+            </div>
+          </div>
+        </form>
+
+        <section class="chat-window" aria-label="Окно чата">
+          <div class="chat-window-head">
+            <div class="action-group">
+              <button id="submit-btn" type="submit" form="event-form">
+                Смоделировать
+              </button>
+              <span class="butterfly-hint" aria-hidden="true" title="Эффект бабочки">
+                <svg
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  xmlns="http://www.w3.org/2000/svg"
+                >
+                  <path
+                    d="M12 8C10.7 5.6 8.4 4 6 4C4.4 4 3 5.3 3 7C3 9.8 5.6 11.8 8.8 11.8H12M12 8C13.3 5.6 15.6 4 18 4C19.6 4 21 5.3 21 7C21 9.8 18.4 11.8 15.2 11.8H12M12 8V16M12 16C10.7 18.4 8.4 20 6 20C4.4 20 3 18.7 3 17C3 14.2 5.6 12.2 8.8 12.2H12M12 16C13.3 18.4 15.6 20 18 20C19.6 20 21 18.7 21 17C21 14.2 18.4 12.2 15.2 12.2H12"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    stroke-linecap="round"
+                    stroke-linejoin="round"
+                  />
+                </svg>
+              </span>
+            </div>
+          </div>
+          <div id="messages" class="messages" aria-live="polite"></div>
+        </section>
+      </section>
+
+      <section class="history-card">
+        <div class="history-head">
+          <h2>История запросов</h2>
+          <button id="clear-history-btn" type="button" class="ghost-btn">
+            Очистить
+          </button>
+        </div>
+        <div id="history-list" class="history-list"></div>
+      </section>
+
+      <p class="note">
+        Важно: это творческая историческая гипотеза, а не установленные факты.
+      </p>
+    </main>
+  </body>
+</html>
