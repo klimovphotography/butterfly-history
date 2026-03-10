@@ -1,3 +1,4 @@
+import crypto from "node:crypto";
 import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
@@ -25,6 +26,8 @@ const OPENROUTER_MODELS = uniqueStrings([
 const rateLimits = new Map();
 const RATE_LIMIT_WINDOW = 60000;
 const MAX_REQUESTS = 5;
+const shareStore = new Map();
+const SHARE_TTL = 1000 * 60 * 60 * 24 * 7;
 
 function isRateLimited(ip) {
   const now = Date.now();
@@ -50,6 +53,15 @@ setInterval(() => {
   }
 }, 60000);
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [id, entry] of shareStore.entries()) {
+    if (now > entry.time + SHARE_TTL) {
+      shareStore.delete(id);
+    }
+  }
+}, 60000);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -57,6 +69,31 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 const server = http.createServer(async (req, res) => {
   try {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+    if (req.method === "POST" && url.pathname === "/api/share") {
+      const payload = await readJsonBody(req);
+      const json = JSON.stringify(payload || {});
+      if (json.length > 120000) {
+        sendJson(res, 413, { error: "Payload too large" });
+        return;
+      }
+      const id = crypto.randomBytes(6).toString("base64url");
+      shareStore.set(id, { payload, time: Date.now() });
+      sendJson(res, 200, { id });
+      return;
+    }
+
+    if (req.method === "GET" && url.pathname.startsWith("/api/share/")) {
+      const id = decodeURIComponent(url.pathname.replace("/api/share/", ""));
+      const entry = shareStore.get(id);
+      if (!entry || Date.now() > entry.time + SHARE_TTL) {
+        if (entry) shareStore.delete(id);
+        sendJson(res, 404, { error: "Not found" });
+        return;
+      }
+      sendJson(res, 200, entry.payload);
+      return;
+    }
 
     if (req.method === "POST" && url.pathname === "/api/alt-history") {
       const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
@@ -89,15 +126,6 @@ async function handleAltHistory(req, res) {
   // Ограничиваем длину ввода для защиты бюджета
   const event = typeof body.event === "string" ? body.event.trim().slice(0, 1500) : "";
   const branch = typeof body.branch === "string" ? body.branch.trim().slice(0, 500) : "";
-
-  // Корректный парсинг IP за прокси сервером
-  const rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
-  const ip = typeof rawIp === "string" ? rawIp.split(",")[0].trim() : "unknown";
-
-  if (isRateLimited(ip)) {
-    sendJson(res, 429, { error: "Слишком много запросов. Подождите минуту." });
-    return;
-  }
 
   const locale = normalizeLocale(body.locale);
   const context = normalizeContext(body.context);

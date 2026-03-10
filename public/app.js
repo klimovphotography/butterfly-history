@@ -323,7 +323,7 @@ function init() {
   applyLocale(currentLocale);
   renderStoryPlaceholder();
   renderHistory();
-  hydrateSharedScenarioFromUrl();
+  void hydrateSharedScenarioFromUrl();
 }
 
 function bindEvents() {
@@ -968,8 +968,8 @@ function buildStoryTheses(scenario, sourceEvent = "") {
     title = title.replace(/[.!?]+$/, "");
 
     let details = String(point?.details || t("fallbackNarrative")).trim();
-    if (details.length > 125) {
-      details = details.slice(0, 122).trim() + "…";
+    if (details.length > 260) {
+      details = details.slice(0, 257).trim() + "…";
     }
 
     return { year, title, details };
@@ -983,7 +983,7 @@ function buildCardTeaser(point, index = 0) {
 
   const titleRaw = formatStoryHeading(point?.title || "", 52);
   const titleBase = toCardLowercase(titleRaw, locale) || fallbackTitle;
-  const detailsBase = toNarrativeSentence(point?.details || fallbackDetails, 220);
+  const detailsBase = toNarrativeSentence(point?.details || fallbackDetails, 260);
   const scrub = (value) =>
     normalizeStoryWhitespace(String(value || ""))
       .replace(/[\\-–—]/g, " ")
@@ -991,8 +991,8 @@ function buildCardTeaser(point, index = 0) {
       .trim();
   const title = scrub(titleBase);
   let details = scrub(detailsBase);
-  if (details.length > 120) {
-    details = details.slice(0, 120).trim();
+  if (details.length > 240) {
+    details = details.slice(0, 240).trim();
   }
 
   return `${title}. ${details}`;
@@ -1390,7 +1390,8 @@ function closeSharePanel() {
 function renderSharePanel(payload) {
   if (!payload) return;
 
-  const shareUrl = buildShareUrl(payload);
+  const shareUrlPromise = buildShareUrl(payload);
+  let shareUrl = "";
   sharePanel.hidden = false;
   document.body.classList.add("share-open");
   sharePanel.innerHTML = "";
@@ -1444,7 +1445,7 @@ function renderSharePanel(payload) {
   linkInput.className = "share-input";
   linkInput.type = "text";
   linkInput.readOnly = true;
-  linkInput.value = shareUrl;
+  linkInput.value = "…";
 
   const status = document.createElement("p");
   status.className = "share-status";
@@ -1476,13 +1477,18 @@ function renderSharePanel(payload) {
   shareButton.addEventListener("click", async () => {
     const titleText = payload.event || t("shareCardTitle");
     const shareText = shorten(payload.scenario?.narrative || "", 180);
+    const resolvedUrl = shareUrl || await shareUrlPromise;
+    if (!resolvedUrl) {
+      status.textContent = t("shareCopyFail");
+      return;
+    }
 
     if (typeof navigator.share === "function") {
       try {
         await navigator.share({
           title: titleText,
           text: shareText,
-          url: shareUrl,
+          url: resolvedUrl,
         });
         status.textContent = t("shareShared");
         return;
@@ -1494,7 +1500,7 @@ function renderSharePanel(payload) {
       }
     }
 
-    const copied = await copyToClipboard(shareUrl);
+    const copied = await copyToClipboard(resolvedUrl);
     status.textContent = copied ? t("shareCopied") : t("shareCopyFail");
   });
 
@@ -1503,6 +1509,11 @@ function renderSharePanel(payload) {
   card.append(top, hint, preview, linkLabel, row);
   sharePanel.append(card, actions, status);
   positionSharePanel(currentShareAnchor);
+
+  shareUrlPromise.then((url) => {
+    shareUrl = url;
+    linkInput.value = url || "";
+  });
 }
 
 function positionSharePanel(anchorEl) {
@@ -1592,15 +1603,48 @@ function normalizeSharePayload(payload) {
   };
 }
 
-function buildShareUrl(payload) {
-  const token = encodeSharePayload(payload);
+async function buildShareUrl(payload) {
   const url = new URL(window.location.href);
-  url.searchParams.set("share", token);
+  const shareId = await storeSharePayload(payload);
+  if (shareId) {
+    url.searchParams.set("s", shareId);
+    url.searchParams.delete("share");
+    return url.toString();
+  }
+  const token = encodeSharePayload(payload);
+  if (token) {
+    url.searchParams.delete("s");
+    url.searchParams.set("share", token);
+    return url.toString();
+  }
   return url.toString();
 }
 
-function hydrateSharedScenarioFromUrl() {
+async function hydrateSharedScenarioFromUrl() {
   const params = new URLSearchParams(window.location.search);
+  const shareId = params.get("s");
+  if (shareId) {
+    const decoded = await fetchSharedPayload(shareId);
+    if (!decoded || !decoded.scenario) return;
+    const locale = normalizeLocale(decoded.locale || currentLocale);
+    if (locale !== currentLocale) {
+      currentLocale = locale;
+      saveLocale(currentLocale);
+      applyLocale(currentLocale);
+    }
+
+    renderStoryResult(
+      {
+        narrative: decoded.scenario.narrative || t("fallbackNarrative"),
+        timeline: normalizeTimeline(decoded.scenario.timeline, decoded.event || ""),
+        branches: normalizeBranches(decoded.scenario.branches),
+      },
+      decoded.event || t("shareCardTitle")
+    );
+    openSharePanel(decoded, storyShareButton);
+    return;
+  }
+
   const token = params.get("share");
   if (!token) return;
 
@@ -1625,6 +1669,31 @@ function hydrateSharedScenarioFromUrl() {
   openSharePanel(decoded, storyShareButton);
 }
 
+async function storeSharePayload(payload) {
+  try {
+    const response = await fetch("/api/share", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    if (!response.ok) return "";
+    const data = await response.json();
+    return typeof data?.id === "string" ? data.id : "";
+  } catch {
+    return "";
+  }
+}
+
+async function fetchSharedPayload(id) {
+  try {
+    const response = await fetch(`/api/share/${encodeURIComponent(id)}`);
+    if (!response.ok) return null;
+    const data = await response.json();
+    return data && typeof data === "object" ? data : null;
+  } catch {
+    return null;
+  }
+}
 function encodeSharePayload(payload) {
   try {
     const json = JSON.stringify(payload);
