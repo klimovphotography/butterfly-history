@@ -9,12 +9,18 @@ loadEnvFile();
 const PORT = Number(process.env.PORT || 3000);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const GEMINI_IMAGE_MODEL =
-  process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-fast-generate-001";
-const GEMINI_ENABLE_IMAGES = process.env.GEMINI_ENABLE_IMAGES !== "false";
 const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_BASE_URL =
+  process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+const OPENROUTER_MODELS = uniqueStrings([
+  process.env.OPENROUTER_MODEL_PRIMARY || "google/gemini-2.0-flash:free",
+  process.env.OPENROUTER_MODEL_FALLBACK || "meta-llama/llama-3.3-70b:free",
+  process.env.OPENROUTER_MODEL_SAFE || "meta-llama/llama-3.3-70b-instruct:free",
+  process.env.OPENROUTER_MODEL_RESCUE || "stepfun/step-3.5-flash:free",
+]);
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -49,100 +55,141 @@ async function handleAltHistory(req, res) {
   const body = await readJsonBody(req);
   const event = typeof body.event === "string" ? body.event.trim() : "";
   const branch = typeof body.branch === "string" ? body.branch.trim() : "";
+  const locale = normalizeLocale(body.locale);
   const context = normalizeContext(body.context);
   const currentYear = new Date().getFullYear();
+  const eventYear = extractEventYear(event) ?? currentYear;
 
   if (!event) {
     sendJson(res, 400, { error: "Введите историческое событие." });
     return;
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
     sendJson(res, 500, {
       error:
-        "Не найден GEMINI_API_KEY. Добавьте ключ в файл .env и перезапустите сервер.",
+        "Не найдены GEMINI_API_KEY и OPENROUTER_API_KEY. Добавьте хотя бы один ключ в .env.",
     });
     return;
   }
 
-  const systemPrompt = buildSystemPrompt(currentYear);
-  const userPrompt = buildUserPrompt({ event, branch, context, currentYear });
+  const systemPrompt = buildSystemPrompt(locale);
+  const userPrompt = buildUserPrompt({
+    event,
+    branch,
+    context,
+    currentYear,
+    eventYear,
+    locale,
+  });
+  const messages = [
+    { role: "system", content: systemPrompt },
+    { role: "user", content: userPrompt },
+  ];
 
   try {
-    const response = await fetch(`${GEMINI_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: GEMINI_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.85,
-      }),
-    });
+    const primary = await requestGemini(messages);
+    let selected = primary;
 
-    const data = await response.json();
+    if (!primary.ok && shouldUseOpenRouterFallback(primary.status)) {
+      const fallback = await requestOpenRouter(messages);
+      if (fallback.ok) {
+        selected = fallback;
+      } else {
+        console.warn(
+          "OpenRouter fallback failed:",
+          fallback.error || "unknown error"
+        );
+      }
+    }
 
-    if (!response.ok) {
-      const apiMessage =
-        data?.error?.message || "Ошибка при обращении к Gemini API.";
-      sendJson(res, response.status, { error: apiMessage });
+    if (!selected.ok) {
+      sendJson(res, selected.status || 502, {
+        error: selected.error || "Не удалось получить ответ от модели.",
+      });
       return;
     }
 
-    const modelText = extractTextFromChatCompletion(data);
-    if (!modelText) {
-      sendJson(res, 502, { error: "Gemini вернул пустой ответ." });
-      return;
-    }
-
-    const scenario = parseScenarioResponse(modelText, currentYear);
-    if (GEMINI_ENABLE_IMAGES && scenario.imagePrompts.length > 0) {
-      scenario.images = await generateScenarioImages(scenario.imagePrompts);
-    } else {
-      scenario.images = [];
-    }
+    const scenario = parseScenarioResponse(
+      selected.modelText,
+      currentYear,
+      locale,
+      eventYear
+    );
+    scenario.images = [];
+    scenario.provider = selected.provider;
+    scenario.model = selected.model;
+    scenario.locale = locale;
 
     sendJson(res, 200, { scenario });
   } catch (error) {
     console.error(error);
-    sendJson(res, 500, { error: "Не удалось получить ответ от Gemini API." });
+    sendJson(res, 500, { error: "Не удалось получить ответ от модели." });
   }
 }
 
-function buildSystemPrompt(currentYear) {
+function buildSystemPrompt(locale) {
   return `
-Ты создаешь правдоподобные сценарии альтернативной истории на русском языке.
-Нельзя писать markdown, пояснения, префиксы или блоки кода.
-Верни только корректный JSON-объект с полями:
-- "narrative": строка 220-420 слов.
-- "timeline": массив из ровно 4 объектов:
-  {"year": number, "title": string, "details": string}
-  Годы должны идти по возрастанию и быть конкретными числами.
-  Последняя точка timeline должна быть про текущий год ${currentYear}.
-- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+Role:
+You are a dual minded expert: a geopolitical analyst and a viral digital editor. Your tone is intelligent, concise, slightly zoomer, and strictly non salesy.
 
-Ограничения:
-- Это гипотеза, а не факт.
-- Строгая причинно-следственная логика.
-- Без мистики и фантастики.
+JSON Output Rules:
+You must generate a structured JSON response with a "timeline" array. Each timeline item needs "year", "title", and "details".
+
+1. Historical Accuracy for "year":
+Identify the exact real world year the user event happened. Start Point 1 in THAT specific year. Move forward logically for Points 2, 3, and 4. Never start a past event in the current year.
+
+2. Viral Hook for "title":
+The title must be a provocative, clickbait style push notification. Strictly maximum 5 words. All lowercase.
+Example: железный занавес опущен
+Example: элиты делят активы
+
+3. Analytical Context for "details":
+The details must be a single logical sentence explaining the new reality. STRICT MAXIMUM 70 CHARACTERS. If it is longer, the UI will break. No fluff.
+
+4. Zero Repetition and Forward Momentum:
+Point 1 is the event. Points 2, 3, and 4 must ONLY describe future consequences. Never summarize or look back at the trigger event.
+
+5. Absolute Prohibition:
+You are strictly forbidden from using any dash or hyphen symbols anywhere in the Russian text output. Use colons or commas instead.
 `.trim();
 }
 
-function buildUserPrompt({ event, branch, context, currentYear }) {
+function buildUserPrompt({ event, branch, context, currentYear, eventYear, locale }) {
   const serializedContext =
     context.length > 0
       ? JSON.stringify(context, null, 2)
       : "[]";
 
+  if (locale === "en") {
+    if (branch) {
+      return `
+Initial event: ${event}
+Event year X: ${eventYear}
+Selected branch: ${branch}
+Current year: ${currentYear}
+Compact context from previous steps:
+${serializedContext}
+
+Continue THIS exact alternative-history branch.
+`.trim();
+    }
+
+    return `
+Initial event: ${event}
+Event year X: ${eventYear}
+Current year: ${currentYear}
+Context from previous steps (if empty, this is step one):
+${serializedContext}
+
+Build the first step of this alternative-history scenario.
+`.trim();
+  }
+
   if (branch) {
     return `
 Исходное событие: ${event}
+Год события X: ${eventYear}
 Выбранная развилка: ${branch}
 Текущий год: ${currentYear}
 Краткий контекст прошлых шагов:
@@ -154,6 +201,7 @@ ${serializedContext}
 
   return `
 Исходное событие: ${event}
+Год события X: ${eventYear}
 Текущий год: ${currentYear}
 Контекст прошлых шагов (если пусто, это первый шаг):
 ${serializedContext}
@@ -186,20 +234,167 @@ function normalizeContext(value) {
   });
 }
 
-function parseScenarioResponse(modelText, currentYear) {
+function parseScenarioResponse(modelText, currentYear, locale, eventYear) {
   const parsed = parseJsonFromModelText(modelText);
-  const narrative = pickString(parsed?.narrative) || modelText.trim();
-  const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative);
-  const branches = normalizeBranches(parsed?.branches);
-  const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative);
+  const parsedNarrative = pickString(parsed?.narrative);
+  const narrative =
+    parsedNarrative ||
+    (locale === "en"
+      ? "The scenario is being reconstructed from verified timeline points."
+      : "Сценарий восстановлен по проверенным точкам таймлайна.");
+  const timeline = normalizeTimeline(
+    parsed?.timeline,
+    currentYear,
+    narrative,
+    locale,
+    eventYear
+  );
+  const branches = normalizeBranches(parsed?.branches, locale);
 
   return {
-    narrative,
+    narrative: repairNarrativeFromTimeline(narrative, timeline, locale),
     timeline,
     branches,
-    imagePrompts,
     images: [],
   };
+}
+
+async function requestGemini(messages) {
+  if (!GEMINI_API_KEY) {
+    return {
+      ok: false,
+      status: 500,
+      error: "GEMINI_API_KEY не задан.",
+    };
+  }
+
+  try {
+    const response = await fetch(
+      `${GEMINI_BASE_URL.replace(/\/+$/, "")}/chat/completions`,
+      {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${GEMINI_API_KEY}`,
+        },
+        body: JSON.stringify({
+          model: GEMINI_MODEL,
+          messages,
+          temperature: 0.85,
+        }),
+      }
+    );
+
+    const data = await response.json();
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: data?.error?.message || "Ошибка при обращении к Gemini API.",
+      };
+    }
+
+    const modelText = extractTextFromChatCompletion(data);
+    if (!modelText) {
+      return {
+        ok: false,
+        status: 502,
+        error: "Gemini вернул пустой ответ.",
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      provider: "gemini",
+      model: GEMINI_MODEL,
+      modelText,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Ошибка Gemini: ${error?.message || "неизвестная ошибка"}`,
+    };
+  }
+}
+
+async function requestOpenRouter(messages) {
+  if (!OPENROUTER_API_KEY) {
+    return {
+      ok: false,
+      status: 500,
+      error: "OpenRouter fallback недоступен: отсутствует OPENROUTER_API_KEY.",
+    };
+  }
+
+  let lastError = "";
+  let lastStatus = 502;
+
+  for (const model of OPENROUTER_MODELS) {
+    try {
+      const response = await fetch(
+        `${OPENROUTER_BASE_URL.replace(/\/+$/, "")}/chat/completions`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${OPENROUTER_API_KEY}`,
+            "HTTP-Referer": `http://localhost:${PORT}`,
+            "X-Title": "Butterfly History",
+          },
+          body: JSON.stringify({
+            model,
+            messages,
+            temperature: 0.85,
+          }),
+        }
+      );
+
+      const data = await response.json();
+      if (!response.ok) {
+        lastStatus = response.status;
+        lastError =
+          data?.error?.message ||
+          `OpenRouter model ${model} returned status ${response.status}`;
+        continue;
+      }
+
+      const modelText = extractTextFromChatCompletion(data);
+      if (!modelText) {
+        lastStatus = 502;
+        lastError = `OpenRouter model ${model} вернул пустой ответ.`;
+        continue;
+      }
+
+      return {
+        ok: true,
+        status: 200,
+        provider: "openrouter",
+        model,
+        modelText,
+      };
+    } catch (error) {
+      lastStatus = 502;
+      lastError = `OpenRouter model ${model}: ${error?.message || "unknown error"}`;
+    }
+  }
+
+  return {
+    ok: false,
+    status: lastStatus,
+    error: lastError || "Не удалось получить ответ через OpenRouter fallback.",
+  };
+}
+
+function shouldUseOpenRouterFallback(status) {
+  if (typeof status !== "number") {
+    return true;
+  }
+  if (status >= 400) {
+    return true;
+  }
+  return false;
 }
 
 function parseJsonFromModelText(text) {
@@ -230,8 +425,9 @@ function parseJsonFromModelText(text) {
   }
 }
 
-function normalizeTimeline(rawTimeline, currentYear, narrative) {
-  const defaults = buildDefaultTimeline(currentYear, narrative);
+function normalizeTimeline(rawTimeline, currentYear, narrative, locale, eventYear) {
+  const baseYear = normalizeYear(eventYear) ?? currentYear;
+  const defaults = buildDefaultTimeline(baseYear, narrative, locale);
 
   if (!Array.isArray(rawTimeline)) {
     return defaults;
@@ -243,13 +439,18 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
       year: normalizeYear(item?.year) ?? defaults[Math.min(index, defaults.length - 1)].year,
       title:
         pickString(item?.title) ||
-        `Этап ${index + 1}`,
+        (locale === "en" ? `Stage ${index + 1}` : `Этап ${index + 1}`),
       details:
         pickString(item?.details) ||
         pickString(item?.text) ||
         defaults[Math.min(index, defaults.length - 1)].details,
     }))
-    .filter((item) => item.details);
+    .map((item) => ({
+      ...item,
+      title: cleanTimelineTitle(item.title, locale),
+      details: cleanTimelineDetails(item.details, locale),
+    }))
+    .filter((item) => item.details && item.title);
 
   if (cleaned.length === 0) {
     return defaults;
@@ -273,43 +474,100 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
   }
 
   const timeline = cleaned.slice(0, 4);
-  timeline[timeline.length - 1].year = currentYear;
-  timeline.sort((a, b) => a.year - b.year);
+  const windows = [
+    [baseYear, baseYear],
+    [baseYear, baseYear + 1],
+    [baseYear + 3, baseYear + 8],
+    [baseYear + 15, baseYear + 30],
+  ];
+
+  for (let i = 0; i < timeline.length; i += 1) {
+    const [minYear, maxYear] = windows[i];
+    const rawYear = normalizeYear(timeline[i].year) ?? minYear;
+    timeline[i].year = Math.min(maxYear, Math.max(minYear, rawYear));
+  }
+
+  for (let i = 1; i < timeline.length; i += 1) {
+    if (timeline[i].year <= timeline[i - 1].year) {
+      timeline[i].year = Math.min(windows[i][1], timeline[i - 1].year + 1);
+      if (timeline[i].year <= timeline[i - 1].year) {
+        timeline[i].year = windows[i][1];
+      }
+    }
+  }
+
   return timeline;
 }
 
-function buildDefaultTimeline(currentYear, narrative) {
-  const snippet = pickString(narrative) || "Последствия разворачиваются постепенно.";
+function buildDefaultTimeline(baseYear, narrative, locale) {
+  const snippet =
+    pickString(narrative) ||
+    (locale === "en"
+      ? "Consequences unfold gradually as institutions adapt to the divergence."
+      : "Последствия разворачиваются постепенно.");
+
+  if (locale === "en") {
+    return [
+      {
+        year: baseYear,
+        title: "Early Turning Point",
+        details: snippet.slice(0, 180),
+      },
+      {
+        year: baseYear + 1,
+        title: "Pattern Consolidation",
+        details: "New political and economic rules become stable and institutionalized.",
+      },
+      {
+        year: baseYear + 7,
+        title: "Global Impact",
+        details: "The shift scales globally and reshapes alliances and technology choices.",
+      },
+      {
+        year: baseYear + 22,
+        title: "Long Term Reality",
+        details: "A stable long term alternative world order emerges around this divergence.",
+      },
+    ];
+  }
+
   return [
     {
-      year: currentYear - 120,
+      year: baseYear,
       title: "Ранний перелом",
       details: snippet.slice(0, 180),
     },
     {
-      year: currentYear - 80,
+      year: baseYear + 1,
       title: "Закрепление тренда",
       details: "Новые политические и экономические правила начинают стабилизироваться.",
     },
     {
-      year: currentYear - 35,
+      year: baseYear + 7,
       title: "Глобальный эффект",
       details: "Изменения переходят на мировой уровень и влияют на союзы и технологии.",
     },
     {
-      year: currentYear,
-      title: "Состояние сегодня",
-      details: "Мир приходит к альтернативной современной конфигурации.",
+      year: baseYear + 22,
+      title: "Долгая новая норма",
+      details: "Формируется устойчивая долгосрочная реальность нового мирового порядка.",
     },
   ];
 }
 
-function normalizeBranches(rawBranches) {
-  const defaults = [
-    "Сделать ставку на технологический рывок и его последствия",
-    "Усилить международные союзы и проверить, как меняется баланс сил",
-    "Сфокусироваться на внутренних реформах и реакции общества",
-  ];
+function normalizeBranches(rawBranches, locale) {
+  const defaults =
+    locale === "en"
+      ? [
+          "Push a major technology leap and trace its consequences",
+          "Strengthen alliances and test how the balance of power shifts",
+          "Focus on domestic reforms and social response",
+        ]
+      : [
+          "Сделать ставку на технологический рывок и его последствия",
+          "Усилить международные союзы и проверить, как меняется баланс сил",
+          "Сфокусироваться на внутренних реформах и реакции общества",
+        ];
 
   if (!Array.isArray(rawBranches)) {
     return defaults.slice(0, 3);
@@ -331,144 +589,80 @@ function normalizeBranches(rawBranches) {
   return unique.slice(0, 3);
 }
 
-function normalizeImagePrompts(rawPrompts, narrative) {
-  const prompts = Array.isArray(rawPrompts)
-    ? rawPrompts
-        .map((prompt) => pickString(prompt))
-        .filter(Boolean)
-        .slice(0, 2)
-    : [];
-
-  if (prompts.length > 0) {
-    return prompts;
-  }
-
-  const summary = (pickString(narrative) || "").slice(0, 260);
-  return [
-    `Альтернативная история, кинематографичная сцена, исторический антураж, высокая детализация: ${summary}`,
-    `Панорама города в альтернативном мире, исторический реализм, широкоугольный кадр, реалистичный свет`,
-  ];
-}
-
-async function generateScenarioImages(prompts) {
-  const tasks = prompts.slice(0, 2).map((prompt) => generateSingleImage(prompt));
-  const results = await Promise.all(tasks);
-  const generated = results.filter(Boolean);
-
-  if (generated.length === prompts.slice(0, 2).length) {
-    return generated;
-  }
-
-  const withFallback = [...generated];
-  for (const prompt of prompts.slice(0, 2)) {
-    if (withFallback.length >= 2) break;
-
-    const exists = withFallback.some((img) => img.prompt === prompt);
-    if (exists) continue;
-
-    withFallback.push({
-      src: buildFallbackSvgDataUri(prompt),
-      prompt,
-    });
-  }
-
-  return withFallback.slice(0, 2);
-}
-
-async function generateSingleImage(prompt) {
-  try {
-    const response = await fetch(
-      `${GEMINI_BASE_URL.replace(/\/+$/, "")}/images/generations`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: GEMINI_IMAGE_MODEL,
-          prompt,
-          size: "1024x1024",
-          n: 1,
-        }),
-      }
-    );
-
-    const data = await response.json();
-    if (!response.ok) {
-      console.warn("Image generation failed:", data?.error?.message || response.statusText);
-      return null;
-    }
-
-    const image = extractImagePayload(data);
-    if (!image) {
-      return null;
-    }
-
-    if (image.url) {
-      return { src: image.url, prompt };
-    }
-
-    return { src: `data:${image.mimeType};base64,${image.base64}`, prompt };
-  } catch (error) {
-    console.warn("Image generation error:", error?.message || error);
-    return null;
-  }
-}
-
-function extractImagePayload(data) {
-  const candidates = [
-    data?.data?.[0],
-    data?.images?.[0],
-    data?.output?.[0],
-    data?.result?.[0],
-    data,
-  ];
-
-  for (const item of candidates) {
-    if (!item) continue;
-
-    if (typeof item?.url === "string" && item.url) {
-      return { url: item.url };
-    }
-
-    if (typeof item?.b64_json === "string" && item.b64_json) {
-      return { base64: item.b64_json, mimeType: "image/png" };
-    }
-
-    if (typeof item?.base64 === "string" && item.base64) {
-      return { base64: item.base64, mimeType: "image/png" };
-    }
-
-    if (typeof item?.image_base64 === "string" && item.image_base64) {
-      return { base64: item.image_base64, mimeType: "image/png" };
-    }
-
-    const inline = item?.inline_data;
-    if (typeof inline?.data === "string" && inline.data) {
-      return { base64: inline.data, mimeType: inline.mime_type || "image/png" };
-    }
-  }
-
-  const inlinePart = data?.candidates?.[0]?.content?.parts?.find(
-    (part) => typeof part?.inline_data?.data === "string" && part.inline_data.data
-  );
-
-  if (inlinePart) {
-    return {
-      base64: inlinePart.inline_data.data,
-      mimeType: inlinePart.inline_data.mime_type || "image/png",
-    };
-  }
-
-  return null;
-}
-
 function pickString(value) {
   if (typeof value !== "string") {
     return "";
   }
-  return value.trim();
+  return sanitizeModelText(value);
+}
+
+function sanitizeModelText(value) {
+  const raw = String(value || "");
+  if (!raw) return "";
+
+  const cleaned = raw
+    .replace(/```json/gi, " ")
+    .replace(/```/g, " ")
+    .replace(/\bjson\b/gi, " ")
+    .replace(/^\s*json\s*/i, "")
+    .replace(/"narrative"\s*:/gi, " ")
+    .replace(/"timeline"\s*:/gi, " ")
+    .replace(/"branches"\s*:/gi, " ")
+    .replace(/[{}[\]`]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+
+  if (!cleaned) return "";
+  return cleaned;
+}
+
+function cleanTimelineTitle(title, locale) {
+  const value = sanitizeModelText(title).replace(/[.!?]+$/g, "").trim();
+  if (!value) {
+    return locale === "en" ? "News turn" : "Поворот сюжета";
+  }
+  return value.slice(0, 80);
+}
+
+function cleanTimelineDetails(details, locale) {
+  const value = sanitizeModelText(details);
+  if (!value) {
+    return locale === "en"
+      ? "Developments accelerate and reshape the political balance."
+      : "События ускоряются и меняют политический баланс.";
+  }
+  if (/[.!?]$/.test(value)) return value;
+  return `${value}.`;
+}
+
+function repairNarrativeFromTimeline(narrative, timeline, locale) {
+  const cleanNarrative = sanitizeModelText(narrative);
+  if (
+    cleanNarrative &&
+    !/"\w+"\s*:/.test(cleanNarrative) &&
+    !/^\s*json\b/i.test(cleanNarrative)
+  ) {
+    return cleanNarrative;
+  }
+
+  const rows = Array.isArray(timeline)
+    ? timeline
+        .map((item) => {
+          const year = normalizeYear(item?.year);
+          const details = cleanTimelineDetails(item?.details, locale);
+          if (!year || !details) return "";
+          return `${year}: ${details}`;
+        })
+        .filter(Boolean)
+    : [];
+
+  if (rows.length > 0) {
+    return rows.join(" ");
+  }
+
+  return locale === "en"
+    ? "A coherent alternative timeline was generated."
+    : "Сформирована связная альтернативная хроника.";
 }
 
 function normalizeYear(value) {
@@ -482,72 +676,27 @@ function normalizeYear(value) {
   return year;
 }
 
-function buildFallbackSvgDataUri(prompt) {
-  const hash = hashText(prompt);
-  const topColor = `hsl(${hash % 360} 62% 72%)`;
-  const bottomColor = `hsl(${(hash + 50) % 360} 48% 40%)`;
-  const sunColor = `hsl(${(hash + 190) % 360} 78% 76%)`;
-  const skyline = createSkylinePath(hash);
-  const caption = escapeXml(prompt.slice(0, 96));
-
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${topColor}"/>
-      <stop offset="100%" stop-color="${bottomColor}"/>
-    </linearGradient>
-    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(25,20,18,0.78)"/>
-      <stop offset="100%" stop-color="rgba(12,10,9,0.88)"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="768" fill="url(#bg)"/>
-  <circle cx="${170 + (hash % 640)}" cy="${120 + (hash % 130)}" r="84" fill="${sunColor}" opacity="0.58"/>
-  <path d="${skyline}" fill="url(#ground)"/>
-  <rect x="0" y="646" width="1024" height="122" fill="rgba(8,8,8,0.42)"/>
-  <text x="44" y="704" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="28" fill="rgba(255,255,255,0.87)">
-    Альтернативный мир
-  </text>
-  <text x="44" y="738" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="20" fill="rgba(255,255,255,0.78)">
-    ${caption}
-  </text>
-</svg>`.trim();
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
+function extractEventYear(text) {
+  const input = String(text || "");
+  const match = input.match(/\b(\d{3,4})\b/);
+  if (!match) return null;
+  return normalizeYear(match[1]);
 }
 
-function createSkylinePath(seed) {
-  let x = 0;
-  let path = "M0 620 ";
-  const base = 620;
-
-  while (x < 1024) {
-    const width = 26 + ((seed + x * 13) % 48);
-    const height = 100 + ((seed + x * 19) % 230);
-    path += `L${x} ${base} L${x} ${base - height} L${Math.min(1024, x + width)} ${base - height} L${Math.min(1024, x + width)} ${base} `;
-    x += width + 6;
-  }
-
-  path += "L1024 768 L0 768 Z";
-  return path;
+function normalizeLocale(value) {
+  const locale = String(value || "").trim().toLowerCase();
+  return locale === "en" ? "en" : "ru";
 }
 
-function hashText(text) {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  }
-  return hash;
-}
-
-function escapeXml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll('"', "&quot;")
-    .replaceAll("'", "&apos;");
+function uniqueStrings(values) {
+  return [
+    ...new Set(
+      values
+        .filter((item) => typeof item === "string")
+        .map((item) => item.trim())
+        .filter(Boolean)
+    ),
+  ];
 }
 
 function extractTextFromChatCompletion(data) {
