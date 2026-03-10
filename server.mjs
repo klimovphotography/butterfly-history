@@ -8,7 +8,7 @@ loadEnvFile();
 
 const PORT = Number(process.env.PORT || 3000);
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
-const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
+const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
@@ -86,8 +86,19 @@ server.listen(PORT, () => {
 
 async function handleAltHistory(req, res) {
   const body = await readJsonBody(req);
-  const event = typeof body.event === "string" ? body.event.trim() : "";
-  const branch = typeof body.branch === "string" ? body.branch.trim() : "";
+  // Ограничиваем длину ввода для защиты бюджета
+  const event = typeof body.event === "string" ? body.event.trim().slice(0, 1500) : "";
+  const branch = typeof body.branch === "string" ? body.branch.trim().slice(0, 500) : "";
+
+  // Корректный парсинг IP за прокси сервером
+  const rawIp = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+  const ip = typeof rawIp === "string" ? rawIp.split(",")[0].trim() : "unknown";
+
+  if (isRateLimited(ip)) {
+    sendJson(res, 429, { error: "Слишком много запросов. Подождите минуту." });
+    return;
+  }
+
   const locale = normalizeLocale(body.locale);
   const context = normalizeContext(body.context);
   const currentYear = new Date().getFullYear();
@@ -223,13 +234,21 @@ function buildUserPrompt({ event, branch, context, currentYear, eventYear, local
   const effectiveCurrentYear = Number.isFinite(computedCurrentYear)
     ? computedCurrentYear
     : currentYear;
-  const yearStr = eventYear ? eventYear : effectiveCurrentYear;
+
+  // Логика выбора года: если в запросе нет цифр, даем ИИ инструкцию вместо жесткой даты
+  const dynamicYear = eventYear 
+    ? eventYear 
+    : `Определи год исторической развилки самостоятельно по контексту. Если событие бытовое или современное, используй ${effectiveCurrentYear}`;
+
+  const dynamicYearEn = eventYear 
+    ? eventYear 
+    : `Determine the historical year based on context. If mundane, use ${effectiveCurrentYear}`;
 
   if (locale === "en") {
     if (branch) {
       return `
 Initial event: ${event}
-Event year X: ${yearStr}
+Event year X: ${dynamicYearEn}
 Selected branch: ${branch}
 Current year: ${effectiveCurrentYear}
 Compact context from previous steps:
@@ -241,7 +260,7 @@ Continue THIS exact alternative history branch. Return strict JSON.
 
     return `
 Initial event: ${event}
-Event year X: ${yearStr}
+Event year X: ${dynamicYearEn}
 Current year: ${effectiveCurrentYear}
 Context from previous steps:
 ${serializedContext}
@@ -253,7 +272,7 @@ Build the first step of this alternative history scenario. Return strict JSON.
   if (branch) {
     return `
 Исходное событие: ${event}
-Год события X: ${yearStr}
+Год события X: ${dynamicYear}
 Выбранная развилка: ${branch}
 Текущий год: ${effectiveCurrentYear}
 Краткий контекст прошлых шагов:
@@ -265,7 +284,7 @@ ${serializedContext}
 
   return `
 Исходное событие: ${event}
-Год события X: ${yearStr}
+Год события X: ${dynamicYear}
 Текущий год: ${effectiveCurrentYear}
 Контекст прошлых шагов:
 ${serializedContext}
@@ -730,16 +749,31 @@ function extractTextFromChatCompletion(data) {
 
 async function serveStaticFile(pathname, res) {
   const targetPath = pathname === "/" ? "/index.html" : pathname;
-  const filePath = path.resolve(PUBLIC_DIR, `.${targetPath}`);
+  // Используем нормализацию для защиты от path traversal
+  const normalizedPath = path.normalize(targetPath).replace(/^(\.\.(\/|\\|$))+/, "");
+  const filePath = path.join(PUBLIC_DIR, normalizedPath);
 
-  if (!filePath.startsWith(PUBLIC_DIR)) {
+  // Жесткая проверка: файл должен быть внутри PUBLIC_DIR
+  if (!filePath.startsWith(PUBLIC_DIR + path.sep) && filePath !== PUBLIC_DIR) {
     sendJson(res, 403, { error: "Forbidden" });
     return;
   }
 
   try {
     const content = await fsp.readFile(filePath);
-    res.writeHead(200, { "Content-Type": getContentType(filePath) });
+    const contentType = getContentType(filePath);
+
+    // Добавляем заголовки безопасности и кеширования
+    res.setHeader("X-Content-Type-Options", "nosniff");
+    res.setHeader("X-Frame-Options", "SAMEORIGIN");
+
+    if (contentType.includes("image") || contentType.includes("css") || contentType.includes("javascript")) {
+      res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    } else {
+      res.setHeader("Cache-Control", "no-cache");
+    }
+
+    res.writeHead(200, { "Content-Type": contentType });
     res.end(content);
   } catch (error) {
     if (error?.code === "ENOENT") {
