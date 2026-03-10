@@ -53,18 +53,28 @@ setInterval(() => {
   }
 }, 60000);
 
-setInterval(() => {
-  const now = Date.now();
-  for (const [id, entry] of shareStore.entries()) {
-    if (now > entry.time + SHARE_TTL) {
-      shareStore.delete(id);
-    }
-  }
-}, 60000);
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
+const SHARE_STORE_DIR = path.join(__dirname, "data");
+const SHARE_STORE_FILE = path.join(SHARE_STORE_DIR, "share-store.json");
+let shareStoreWriteTimer = null;
+
+loadShareStoreFromDisk();
+
+setInterval(() => {
+  const now = Date.now();
+  let removed = false;
+  for (const [id, entry] of shareStore.entries()) {
+    if (now > entry.time + SHARE_TTL) {
+      shareStore.delete(id);
+      removed = true;
+    }
+  }
+  if (removed) {
+    scheduleShareStoreWrite();
+  }
+}, 60000);
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -79,6 +89,7 @@ const server = http.createServer(async (req, res) => {
       }
       const id = crypto.randomBytes(6).toString("base64url");
       shareStore.set(id, { payload, time: Date.now() });
+      scheduleShareStoreWrite();
       sendJson(res, 200, { id });
       return;
     }
@@ -87,7 +98,10 @@ const server = http.createServer(async (req, res) => {
       const id = decodeURIComponent(url.pathname.replace("/api/share/", ""));
       const entry = shareStore.get(id);
       if (!entry || Date.now() > entry.time + SHARE_TTL) {
-        if (entry) shareStore.delete(id);
+        if (entry) {
+          shareStore.delete(id);
+          scheduleShareStoreWrite();
+        }
         sendJson(res, 404, { error: "Not found" });
         return;
       }
@@ -834,6 +848,45 @@ function getContentType(filePath) {
       return "image/x-icon";
     default:
       return "application/octet-stream";
+  }
+}
+
+function scheduleShareStoreWrite() {
+  if (shareStoreWriteTimer) return;
+  shareStoreWriteTimer = setTimeout(() => {
+    shareStoreWriteTimer = null;
+    void persistShareStore();
+  }, 250);
+}
+
+function loadShareStoreFromDisk() {
+  try {
+    if (!fs.existsSync(SHARE_STORE_FILE)) {
+      return;
+    }
+    const raw = fs.readFileSync(SHARE_STORE_FILE, "utf-8");
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return;
+    const now = Date.now();
+    for (const [id, entry] of Object.entries(parsed)) {
+      if (!entry || typeof entry !== "object") continue;
+      const time = Number(entry.time) || now;
+      if (now > time + SHARE_TTL) continue;
+      shareStore.set(id, { payload: entry.payload, time });
+    }
+  } catch (error) {
+    console.error("Failed to load share store:", error);
+  }
+}
+
+async function persistShareStore() {
+  try {
+    await fsp.mkdir(SHARE_STORE_DIR, { recursive: true });
+    const data = Object.fromEntries(shareStore.entries());
+    await fsp.writeFile(SHARE_STORE_FILE, JSON.stringify(data), "utf-8");
+  } catch (error) {
+    console.error("Failed to persist share store:", error);
   }
 }
 
