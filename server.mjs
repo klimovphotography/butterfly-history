@@ -41,6 +41,15 @@ function isRateLimited(ip) {
   return user.count > MAX_REQUESTS;
 }
 
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, user] of rateLimits.entries()) {
+    if (now > user.time + RATE_LIMIT_WINDOW) {
+      rateLimits.delete(ip);
+    }
+  }
+}, 60000);
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -153,10 +162,38 @@ async function handleAltHistory(req, res) {
 }
 
 function buildSystemPrompt(locale) {
+  if (locale === "en") {
+    return `
+Role: You are a brilliant alternative history analyst and a viral digital editor.
+Language: English.
+Task: Return a strict JSON. 
+
+JSON Format strictly required:
+{
+  "narrative": "Deep analytical paragraph describing concrete changes. No fluff.",
+  "timeline": [
+    {
+      "year": 2022,
+      "title": "viral short hook",
+      "details": "One punchy sentence about the consequences."
+    }
+  ],
+  "branches": ["Option 1", "Option 2"]
+}
+
+Rules:
+1. "year": Identify the EXACT real historical year of the event. Start Point 1 in that year.
+2. "title": Viral hook for social media. Max 5 words. Lowercase.
+3. "details": Specific factual alternative history. NO generic phrases.
+4. "timeline" MUST have exactly 4 items moving forward in time.
+5. "narrative" MUST NOT be empty.
+`.trim();
+  }
+
   return `
 Role: You are a brilliant alternative history analyst and a viral digital editor.
 Language: Russian.
-Task: Return a strict JSON. NO DASHES allowed in text.
+Task: Return a strict JSON.
 
 JSON Format strictly required:
 {
@@ -182,7 +219,11 @@ Rules:
 
 function buildUserPrompt({ event, branch, context, currentYear, eventYear, locale }) {
   const serializedContext = context.length > 0 ? JSON.stringify(context, null, 2) : "[]";
-  const yearStr = eventYear ? eventYear : "Определи исторический год самостоятельно по контексту";
+  const computedCurrentYear = new Date().getFullYear();
+  const effectiveCurrentYear = Number.isFinite(computedCurrentYear)
+    ? computedCurrentYear
+    : currentYear;
+  const yearStr = eventYear ? eventYear : effectiveCurrentYear;
 
   if (locale === "en") {
     if (branch) {
@@ -190,7 +231,7 @@ function buildUserPrompt({ event, branch, context, currentYear, eventYear, local
 Initial event: ${event}
 Event year X: ${yearStr}
 Selected branch: ${branch}
-Current year: ${currentYear}
+Current year: ${effectiveCurrentYear}
 Compact context from previous steps:
 ${serializedContext}
 
@@ -201,7 +242,7 @@ Continue THIS exact alternative history branch. Return strict JSON.
     return `
 Initial event: ${event}
 Event year X: ${yearStr}
-Current year: ${currentYear}
+Current year: ${effectiveCurrentYear}
 Context from previous steps:
 ${serializedContext}
 
@@ -214,7 +255,7 @@ Build the first step of this alternative history scenario. Return strict JSON.
 Исходное событие: ${event}
 Год события X: ${yearStr}
 Выбранная развилка: ${branch}
-Текущий год: ${currentYear}
+Текущий год: ${effectiveCurrentYear}
 Краткий контекст прошлых шагов:
 ${serializedContext}
 
@@ -225,7 +266,7 @@ ${serializedContext}
   return `
 Исходное событие: ${event}
 Год события X: ${yearStr}
-Текущий год: ${currentYear}
+Текущий год: ${effectiveCurrentYear}
 Контекст прошлых шагов:
 ${serializedContext}
 
@@ -720,6 +761,15 @@ function getContentType(filePath) {
       return "application/javascript; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".png":
+      return "image/png";
+    case ".svg":
+      return "image/svg+xml";
+    case ".ico":
+      return "image/x-icon";
     default:
       return "application/octet-stream";
   }
