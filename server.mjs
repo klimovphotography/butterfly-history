@@ -22,6 +22,25 @@ const OPENROUTER_MODELS = uniqueStrings([
   process.env.OPENROUTER_MODEL_RESCUE || "stepfun/step-3.5-flash:free",
 ]);
 
+const rateLimits = new Map();
+const RATE_LIMIT_WINDOW = 60000;
+const MAX_REQUESTS = 5;
+
+function isRateLimited(ip) {
+  const now = Date.now();
+  const user = rateLimits.get(ip) || { count: 0, time: now };
+
+  if (now > user.time + RATE_LIMIT_WINDOW) {
+    user.count = 1;
+    user.time = now;
+  } else {
+    user.count += 1;
+  }
+
+  rateLimits.set(ip, user);
+  return user.count > MAX_REQUESTS;
+}
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
@@ -31,6 +50,11 @@ const server = http.createServer(async (req, res) => {
     const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
     if (req.method === "POST" && url.pathname === "/api/alt-history") {
+      const ip = req.headers["x-forwarded-for"] || req.socket.remoteAddress || "unknown";
+      if (isRateLimited(ip)) {
+        sendJson(res, 429, { error: "Слишком много запросов. Подождите минуту перед новой генерацией." });
+        return;
+      }
       await handleAltHistory(req, res);
       return;
     }

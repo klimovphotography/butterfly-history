@@ -716,16 +716,21 @@ function renderStoryViewScenario(theses, detailedTimeline = [], narrativeText = 
       const li = document.createElement("li");
       li.className = "story-view-thesis";
       li.style.setProperty("--story-delay", `${index * 200}ms`);
+      li.style.marginBottom = "14px";
+      li.style.lineHeight = "1.4";
 
       const year = document.createElement("strong");
       year.className = "story-view-thesis-year";
       year.textContent = `${item.year}: `;
 
+      const title = document.createElement("strong");
+      title.textContent = `${item.title}. `;
+
       const text = document.createElement("span");
       text.className = "story-view-thesis-text";
-      text.textContent = item.text;
+      text.textContent = item.details;
 
-      li.append(year, text);
+      li.append(year, title, text);
       storyViewTheses.append(li);
     }
   }
