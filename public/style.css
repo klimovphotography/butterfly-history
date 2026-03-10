@@ -1045,7 +1045,8 @@ body.share-open {
   max-width: 780px;
   list-style: none;
   display: grid;
-  gap: 38px;
+  /* Уменьшаем отступ между пунктами с 38px до 28px */
+  gap: 28px; 
 }
 
 .story-thesis-item {
@@ -1078,7 +1079,8 @@ body.share-open {
 }
 
 .story-thesis-details {
-  font-size: 36px;
+  /* Уменьшаем шрифт с 36px до 32px для лучшей вмещаемости */
+  font-size: 32px; 
   font-weight: 420;
   line-height: 1.4;
   color: #2d2d2d;

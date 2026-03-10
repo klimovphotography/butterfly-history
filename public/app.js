@@ -968,8 +968,8 @@ function buildStoryTheses(scenario, sourceEvent = "") {
     title = title.replace(/[.!?]+$/, "");
 
     let details = String(point?.details || t("fallbackNarrative")).trim();
-    if (details.length > 140) {
-      details = details.slice(0, 137).trim() + "…";
+    if (details.length > 125) {
+      details = details.slice(0, 122).trim() + "…";
     }
 
     return { year, title, details };
