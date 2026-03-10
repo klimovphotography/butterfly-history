@@ -103,7 +103,7 @@ const I18N = {
     shareStoryReady: "Карточка сохранена в PNG",
     shareStoryError: "Не удалось создать карточку",
     shareStoryNoLib: "Инструмент карточки не загрузился",
-    storyFooterCta: "зайди и собери свою версию истории",
+    storyFooterCta: "смоделировать свою ветку реальности ↗",
     fallbackNarrative: "Гипотеза построена, но текстовое описание оказалось неполным.",
     fallbackTimeline1Title: "точка запуска",
     fallbackTimeline1Details: "Ключевые центры власти принимают решение, которое меняет траекторию страны.",
@@ -595,8 +595,9 @@ function renderStoryResult(scenario, sourceEvent) {
   const timeline = normalizeTimeline(scenario?.timeline, sourceEvent);
   const branches = normalizeBranches(scenario?.branches);
   const narrativeSource = String(scenario?.narrative || "");
-  const detailedTimeline = buildDetailedNarrativeTimeline(timeline, narrativeSource);
-  const narrative = detailedTimeline.map((item) => item.fullText).join(" ");
+  
+  const detailedTimeline = buildDetailedNarrativeTimeline(timeline);
+  
   const theses = buildStoryTheses({
     narrative: narrativeSource,
     timeline,
@@ -606,7 +607,7 @@ function renderStoryResult(scenario, sourceEvent) {
   storyActions.hidden = false;
   setStoryLoadingState(false);
   storyViewTitle.textContent = buildStoryEventTitle(event);
-  renderStoryViewScenario(theses, detailedTimeline);
+  renderStoryViewScenario(theses, detailedTimeline, narrativeSource);
 
   // Restart entry animation each time a new scenario arrives.
   storyViewCard.classList.remove("story-enter");
@@ -618,7 +619,7 @@ function renderStoryResult(scenario, sourceEvent) {
     event,
     locale: currentLocale,
     scenario: {
-      narrative,
+      narrative: narrativeSource,
       timeline,
       branches,
     },
@@ -702,9 +703,9 @@ function renderStoryViewMessage(text) {
   storyViewText.textContent = String(text || "");
 }
 
-function renderStoryViewScenario(theses, detailedTimeline = []) {
+function renderStoryViewScenario(theses, detailedTimeline = [], narrativeText = "") {
   storyViewText.hidden = false;
-  renderStoryNarrativeTimeline(detailedTimeline);
+  renderStoryNarrativeTimeline(detailedTimeline, narrativeText);
 
   if (storyViewTheses) {
     storyViewTheses.hidden = false;
@@ -730,10 +731,20 @@ function renderStoryViewScenario(theses, detailedTimeline = []) {
   }
 }
 
-function renderStoryNarrativeTimeline(items) {
+function renderStoryNarrativeTimeline(items, narrativeText) {
   storyViewText.innerHTML = "";
-  const timelineItems = Array.isArray(items) ? items.filter(Boolean) : [];
+  
+  if (narrativeText) {
+    const intro = document.createElement("p");
+    intro.className = "story-view-detail-text";
+    intro.style.marginBottom = "24px";
+    intro.style.paddingBottom = "18px";
+    intro.style.borderBottom = "1px solid var(--line)";
+    intro.textContent = narrativeText;
+    storyViewText.append(intro);
+  }
 
+  const timelineItems = Array.isArray(items) ? items.filter(Boolean) : [];
   if (timelineItems.length === 0) {
     storyViewText.textContent = t("fallbackNarrative");
     return;
@@ -765,23 +776,16 @@ function renderStoryNarrativeTimeline(items) {
   storyViewText.append(list);
 }
 
-function buildDetailedNarrativeTimeline(timeline, narrativeText) {
-  const narrativeSentences = extractSentences(narrativeText, 8, 230);
-
+function buildDetailedNarrativeTimeline(timeline) {
   return (Array.isArray(timeline) ? timeline : [])
     .slice(0, 4)
-    .map((point, index) => {
+    .map((point) => {
       const year = parseYear(point?.year) ?? CURRENT_YEAR;
-      const title =
-        formatStoryHeading(point?.title || "", 84) ||
-        (normalizeLocale(currentLocale) === "en" ? "Stage" : "Этап");
-      const primary = toNarrativeSentence(point?.details, 260);
-      const extra = narrativeSentences[index] || "";
-      const fullText = [primary, extra].filter(Boolean).join(" ");
+      const title = formatStoryHeading(point?.title || "", 84) || "Этап";
       return {
         year,
         title,
-        fullText: fullText || t("fallbackNarrative"),
+        fullText: String(point?.details || "").trim() || t("fallbackNarrative"),
       };
     });
 }
@@ -948,52 +952,45 @@ function removeBrokenTail(text) {
 
 function buildStoryTheses(scenario, sourceEvent = "") {
   const timeline = normalizeTimeline(scenario?.timeline, sourceEvent);
-  const baseYear = extractEventYear(sourceEvent) ?? parseYear(timeline[0]?.year) ?? CURRENT_YEAR;
-  const theses = [];
+  const locale = normalizeLocale(currentLocale);
+  const fallbackTitle = locale === "en" ? "system shift" : "системный сдвиг";
 
-  for (const point of timeline) {
-    if (theses.length >= 4) break;
+  return timeline.slice(0, 4).map(point => {
     const year = parseYear(point?.year) ?? CURRENT_YEAR;
-    const text = toSingleStorySentence(buildCardTeaser(point, theses.length), 156);
-    if (!text) continue;
-    theses.push({ year, text });
-  }
 
-  if (theses.length < 3) {
-    const fallbackLines = buildStoryLines(scenario?.narrative || t("fallbackNarrative"));
-    const fallbackYears = [baseYear, baseYear + 2, baseYear + 7, baseYear + 20];
+    let title = String(point?.title || fallbackTitle).trim();
+    title = locale === "en" ? title.toLowerCase() : title.toLocaleLowerCase("ru-RU");
+    title = title.replace(/[.!?]+$/, "");
 
-    for (const line of fallbackLines) {
-      if (theses.length >= 4) break;
-      const text = toSingleStorySentence(line, 114);
-      if (!text) continue;
-      const year = fallbackYears[Math.min(theses.length, fallbackYears.length - 1)];
-      theses.push({ year, text });
+    let details = String(point?.details || t("fallbackNarrative")).trim();
+    if (details.length > 140) {
+      details = details.slice(0, 137).trim() + "…";
     }
-  }
 
-  if (theses.length === 0) {
-    const fallbackText = toSingleStorySentence(t("fallbackNarrative"), 114) || t("fallbackNarrative");
-    theses.push({
-      year: CURRENT_YEAR,
-      text: fallbackText,
-    });
-  }
-
-  return theses.slice(0, 4);
+    return { year, title, details };
+  });
 }
 
 function buildCardTeaser(point, index = 0) {
   const locale = normalizeLocale(currentLocale);
   const fallbackTitle = locale === "en" ? "system shift" : "системный сдвиг";
-  const fallbackEssence = locale === "en" ? "power balance changes" : "меняется баланс сил";
+  const fallbackDetails = t("fallbackNarrative");
 
   const titleRaw = formatStoryHeading(point?.title || "", 52);
-  const detailsRaw = toNarrativeSentence(point?.details, 120);
-  const title = toCardLowercase(titleRaw, locale) || fallbackTitle;
-  const essence = toCardEssence(detailsRaw, locale) || fallbackEssence;
+  const titleBase = toCardLowercase(titleRaw, locale) || fallbackTitle;
+  const detailsBase = toNarrativeSentence(point?.details || fallbackDetails, 220);
+  const scrub = (value) =>
+    normalizeStoryWhitespace(String(value || ""))
+      .replace(/[\\-–—]/g, " ")
+      .replace(/[.!?]+$/g, "")
+      .trim();
+  const title = scrub(titleBase);
+  let details = scrub(detailsBase);
+  if (details.length > 120) {
+    details = details.slice(0, 120).trim();
+  }
 
-  return `${title} : ${essence}.`;
+  return `${title}. ${details}`;
 }
 
 function toCardLowercase(text, locale) {
@@ -1022,14 +1019,24 @@ function renderStoryTheses(theses) {
     const li = document.createElement("li");
     li.className = "story-thesis-item";
 
+    const head = document.createElement("div");
+    head.className = "story-thesis-head";
+
     const year = document.createElement("strong");
     year.className = "story-thesis-year";
     year.textContent = `${item.year}: `;
 
-    const text = document.createElement("span");
-    text.textContent = item.text;
+    const title = document.createElement("span");
+    title.className = "story-thesis-title";
+    title.textContent = `${item.title}.`;
 
-    li.append(year, text);
+    head.append(year, title);
+
+    const text = document.createElement("span");
+    text.className = "story-thesis-details";
+    text.textContent = item.details;
+
+    li.append(head, text);
     storyCardTheses.append(li);
   }
 }

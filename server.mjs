@@ -58,7 +58,7 @@ async function handleAltHistory(req, res) {
   const locale = normalizeLocale(body.locale);
   const context = normalizeContext(body.context);
   const currentYear = new Date().getFullYear();
-  const eventYear = extractEventYear(event) ?? currentYear;
+  const eventYear = extractEventYear(event);
 
   if (!event) {
     sendJson(res, 400, { error: "Введите историческое событие." });
@@ -130,83 +130,82 @@ async function handleAltHistory(req, res) {
 
 function buildSystemPrompt(locale) {
   return `
-Role:
-You are a dual minded expert: a geopolitical analyst and a viral digital editor. Your tone is intelligent, concise, slightly zoomer, and strictly non salesy.
+Role: You are a brilliant alternative history analyst and a viral digital editor.
+Language: Russian.
+Task: Return a strict JSON. NO DASHES allowed in text.
 
-JSON Output Rules:
-You must generate a structured JSON response with a "timeline" array. Each timeline item needs "year", "title", and "details".
+JSON Format strictly required:
+{
+  "narrative": "Глубокий аналитический абзац. Описывает конкретные изменения. Никакой воды.",
+  "timeline": [
+    {
+      "year": 2022,
+      "title": "хлесткий заголовок",
+      "details": "Одно емкое предложение о последствиях."
+    }
+  ],
+  "branches": ["Вариант 1", "Вариант 2"]
+}
 
-1. Historical Accuracy for "year":
-Identify the exact real world year the user event happened. Start Point 1 in THAT specific year. Move forward logically for Points 2, 3, and 4. Never start a past event in the current year.
-
-2. Viral Hook for "title":
-The title must be a provocative, clickbait style push notification. Strictly maximum 5 words. All lowercase.
-Example: железный занавес опущен
-Example: элиты делят активы
-
-3. Analytical Context for "details":
-The details must be a single logical sentence explaining the new reality. STRICT MAXIMUM 70 CHARACTERS. If it is longer, the UI will break. No fluff.
-
-4. Zero Repetition and Forward Momentum:
-Point 1 is the event. Points 2, 3, and 4 must ONLY describe future consequences. Never summarize or look back at the trigger event.
-
-5. Absolute Prohibition:
-You are strictly forbidden from using any dash or hyphen symbols anywhere in the Russian text output. Use colons or commas instead.
+Rules:
+1. "year": Identify the EXACT real historical year of the event. Start Point 1 in that year.
+2. "title": Viral hook for social media. Max 5 words. Lowercase.
+3. "details": Specific factual alternative history. NO generic phrases like глобальный эффект.
+4. "timeline" MUST have exactly 4 items moving forward in time.
+5. "narrative" MUST NOT be empty.
 `.trim();
 }
 
 function buildUserPrompt({ event, branch, context, currentYear, eventYear, locale }) {
-  const serializedContext =
-    context.length > 0
-      ? JSON.stringify(context, null, 2)
-      : "[]";
+  const serializedContext = context.length > 0 ? JSON.stringify(context, null, 2) : "[]";
+  const yearStr = eventYear ? eventYear : "Определи исторический год самостоятельно по контексту";
 
   if (locale === "en") {
     if (branch) {
       return `
 Initial event: ${event}
-Event year X: ${eventYear}
+Event year X: ${yearStr}
 Selected branch: ${branch}
 Current year: ${currentYear}
 Compact context from previous steps:
 ${serializedContext}
 
-Continue THIS exact alternative-history branch.
+Continue THIS exact alternative history branch. Return strict JSON.
 `.trim();
     }
 
     return `
 Initial event: ${event}
-Event year X: ${eventYear}
+Event year X: ${yearStr}
 Current year: ${currentYear}
-Context from previous steps (if empty, this is step one):
+Context from previous steps:
 ${serializedContext}
 
-Build the first step of this alternative-history scenario.
+Build the first step of this alternative history scenario. Return strict JSON.
 `.trim();
   }
 
   if (branch) {
     return `
 Исходное событие: ${event}
-Год события X: ${eventYear}
+Год события X: ${yearStr}
 Выбранная развилка: ${branch}
 Текущий год: ${currentYear}
 Краткий контекст прошлых шагов:
 ${serializedContext}
 
-Продолжи именно эту альтернативную ветку.
+Продолжи именно эту альтернативную ветку. Верни строго JSON.
 `.trim();
   }
 
   return `
 Исходное событие: ${event}
-Год события X: ${eventYear}
+Год события X: ${yearStr}
 Текущий год: ${currentYear}
-Контекст прошлых шагов (если пусто, это первый шаг):
+Контекст прошлых шагов:
 ${serializedContext}
 
-Построй первый шаг альтернативной истории.
+Построй первый шаг альтернативной истории. Верни строго JSON.
 `.trim();
 }
 
@@ -426,73 +425,22 @@ function parseJsonFromModelText(text) {
 }
 
 function normalizeTimeline(rawTimeline, currentYear, narrative, locale, eventYear) {
-  const baseYear = normalizeYear(eventYear) ?? currentYear;
-  const defaults = buildDefaultTimeline(baseYear, narrative, locale);
+  const baseYear = normalizeYear(eventYear);
+  const defaults = buildDefaultTimeline(baseYear ?? currentYear, narrative, locale);
 
-  if (!Array.isArray(rawTimeline)) {
+  if (!Array.isArray(rawTimeline) || rawTimeline.length === 0) {
     return defaults;
   }
 
-  const cleaned = rawTimeline
-    .slice(0, 6)
-    .map((item, index) => ({
-      year: normalizeYear(item?.year) ?? defaults[Math.min(index, defaults.length - 1)].year,
-      title:
-        pickString(item?.title) ||
-        (locale === "en" ? `Stage ${index + 1}` : `Этап ${index + 1}`),
-      details:
-        pickString(item?.details) ||
-        pickString(item?.text) ||
-        defaults[Math.min(index, defaults.length - 1)].details,
-    }))
-    .map((item) => ({
-      ...item,
-      title: cleanTimelineTitle(item.title, locale),
-      details: cleanTimelineDetails(item.details, locale),
-    }))
-    .filter((item) => item.details && item.title);
-
-  if (cleaned.length === 0) {
-    return defaults;
-  }
-
-  const usedYears = new Set();
-  for (const item of cleaned) {
-    let year = item.year;
-    while (usedYears.has(year)) {
-      year += 1;
-    }
-    item.year = year;
-    usedYears.add(year);
-  }
-
-  cleaned.sort((a, b) => a.year - b.year);
-
-  while (cleaned.length < 4) {
-    const fallback = defaults[cleaned.length];
-    cleaned.push({ ...fallback });
-  }
-
-  const timeline = cleaned.slice(0, 4);
-  const windows = [
-    [baseYear, baseYear],
-    [baseYear, baseYear + 1],
-    [baseYear + 3, baseYear + 8],
-    [baseYear + 15, baseYear + 30],
-  ];
-
-  for (let i = 0; i < timeline.length; i += 1) {
-    const [minYear, maxYear] = windows[i];
-    const rawYear = normalizeYear(timeline[i].year) ?? minYear;
-    timeline[i].year = Math.min(maxYear, Math.max(minYear, rawYear));
-  }
+  const timeline = rawTimeline.slice(0, 4).map((item, index) => ({
+    year: normalizeYear(item?.year) ?? ((baseYear ?? currentYear) + index),
+    title: cleanTimelineTitle(item?.title, locale),
+    details: cleanTimelineDetails(item?.details, locale),
+  }));
 
   for (let i = 1; i < timeline.length; i += 1) {
     if (timeline[i].year <= timeline[i - 1].year) {
-      timeline[i].year = Math.min(windows[i][1], timeline[i - 1].year + 1);
-      if (timeline[i].year <= timeline[i - 1].year) {
-        timeline[i].year = windows[i][1];
-      }
+      timeline[i].year = timeline[i - 1].year + 1;
     }
   }
 

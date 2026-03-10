@@ -1045,20 +1045,43 @@ body.share-open {
   max-width: 780px;
   list-style: none;
   display: grid;
-  gap: 18px;
+  gap: 38px;
 }
 
 .story-thesis-item {
   margin: 0;
-  font-size: 44px;
-  font-weight: 520;
-  line-height: 1.24;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
   color: #1b1b1b;
+}
+
+.story-thesis-head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  align-items: baseline;
+  font-size: 42px;
+  font-weight: 700;
+  line-height: 1.08;
+  color: #0a0a0a;
 }
 
 .story-thesis-year {
   font-weight: 700;
-  color: #0a0a0a;
+  color: inherit;
+}
+
+.story-thesis-title {
+  font-weight: 700;
+  color: inherit;
+}
+
+.story-thesis-details {
+  font-size: 36px;
+  font-weight: 420;
+  line-height: 1.4;
+  color: #2d2d2d;
 }
 
 .story-footer {
