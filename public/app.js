@@ -1476,7 +1476,6 @@ function renderSharePanel(payload) {
 
   shareButton.addEventListener("click", async () => {
     const titleText = payload.event || t("shareCardTitle");
-    const shareText = shorten(payload.scenario?.narrative || "", 180);
     const resolvedUrl = shareUrl || await shareUrlPromise;
     if (!resolvedUrl) {
       status.textContent = t("shareCopyFail");
@@ -1487,7 +1486,6 @@ function renderSharePanel(payload) {
       try {
         await navigator.share({
           title: titleText,
-          text: shareText,
           url: resolvedUrl,
         });
         status.textContent = t("shareShared");

@@ -1214,6 +1214,23 @@ body.share-open {
     max-width: none;
   }
 
+  .input-shell {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+  }
+
+  textarea {
+    padding: 14px;
+  }
+
+  #submit-btn {
+    position: static;
+    width: 100%;
+    height: auto;
+    padding: 11px 18px;
+  }
+
   .year-item {
     padding-left: 52px;
   }
@@ -1227,11 +1244,11 @@ body.share-open {
 
   .story-view-card {
     position: static;
-    order: 1;
+    order: 2;
     max-width: none;
   }
 
   .story-narrative {
-    order: 2;
+    order: 1;
   }
 }
