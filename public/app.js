@@ -4,17 +4,31 @@ const button = document.getElementById("submit-btn");
 const messages = document.getElementById("messages");
 const historyList = document.getElementById("history-list");
 const clearHistoryButton = document.getElementById("clear-history-btn");
-const exampleButtons = document.querySelectorAll(".example-btn");
+const randomButton = document.getElementById("random-btn");
+const providerPill = document.getElementById("provider-pill");
 
 const HISTORY_KEY = "butterfly_history_v2";
 const HISTORY_LIMIT = 20;
 const CURRENT_YEAR = new Date().getFullYear();
+const QUICK_START_EXAMPLES = [
+  "Что если Карибский кризис 1962 года перешел в прямой военный конфликт?",
+  "Что если Византия удержала Константинополь в 1453 году?",
+  "Что если высадка в Нормандии в 1944 году провалилась?",
+  "Что если Юлий Цезарь не был убит в 44 году до н.э.?",
+  "Что если Великая Армада Испании победила Англию в 1588 году?",
+  "Что если Наполеон выиграл битву при Ватерлоо в 1815 году?",
+  "Что если Российская империя избежала революции 1917 года?",
+  "Что если Римская империя не распалась на западную и восточную части?",
+  "Что если полет Гагарина в 1961 году не состоялся?",
+  "Что если СССР не распался в 1991 году?",
+];
 
 let history = readHistory();
 let activeScenario = null;
 let isLoading = false;
 
 renderHistory();
+loadProviderMeta();
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -27,9 +41,11 @@ clearHistoryButton.addEventListener("click", () => {
   renderHistory();
 });
 
-for (const btn of exampleButtons) {
-  btn.addEventListener("click", () => {
-    const eventText = btn.dataset.event || "";
+if (randomButton) {
+  randomButton.addEventListener("click", () => {
+    if (!QUICK_START_EXAMPLES.length) return;
+    const eventText =
+      QUICK_START_EXAMPLES[Math.floor(Math.random() * QUICK_START_EXAMPLES.length)];
     input.value = eventText;
     input.focus();
   });
@@ -121,6 +137,21 @@ async function requestScenario(payload) {
     isLoading = false;
     setUiBusy(false);
     input.focus();
+  }
+}
+
+async function loadProviderMeta() {
+  if (!providerPill) return;
+  try {
+    const response = await fetch("/api/meta");
+    if (!response.ok) return;
+    const data = await response.json();
+    const provider = String(data?.provider || "").trim();
+    const model = String(data?.model || "").trim();
+    if (!provider) return;
+    providerPill.textContent = model ? `${provider} · ${model}` : provider;
+  } catch {
+    // Silent fail: meta is optional UI sugar.
   }
 }
 

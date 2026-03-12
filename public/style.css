@@ -66,6 +66,27 @@ h1 {
   letter-spacing: -0.03em;
 }
 
+.hero-title {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 0.35em;
+}
+
+.hero-logo {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1em;
+  height: 1em;
+  text-decoration: none;
+}
+
+.hero-logo img {
+  width: 1em;
+  height: 1em;
+  display: block;
+}
+
 .subtitle {
   margin: 0;
   max-width: 62ch;
@@ -114,23 +135,6 @@ textarea:focus {
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.08);
 }
 
-.examples {
-  display: grid;
-  gap: 8px;
-}
-
-.examples-title {
-  margin: 0;
-  font-size: 0.95rem;
-  color: var(--muted);
-}
-
-.examples-list {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
 button {
   border-radius: 999px;
   padding: 11px 18px;
@@ -156,7 +160,6 @@ button:disabled {
   white-space: nowrap;
 }
 
-.example-btn,
 .ghost-btn,
 .branch-btn {
   border: 1px solid var(--line-strong);
@@ -167,7 +170,6 @@ button:disabled {
   font-weight: 600;
 }
 
-.example-btn:hover,
 .ghost-btn:hover,
 .branch-btn:hover {
   background: #111111;
@@ -193,20 +195,42 @@ button:disabled {
   gap: 10px;
 }
 
-.butterfly-hint {
-  width: 42px;
-  height: 42px;
+.random-btn {
   border-radius: 999px;
+  padding: 11px 18px;
+  font: inherit;
+  font-weight: 700;
   border: 1px solid var(--line-strong);
   background: #ffffff;
   color: #111111;
-  display: inline-grid;
-  place-items: center;
+  cursor: pointer;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
 }
 
-.butterfly-hint svg {
-  width: 20px;
-  height: 20px;
+.random-btn:hover {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.provider-row {
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 8px;
+}
+
+.provider-pill {
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  padding: 4px 10px;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  background: #f4f4f4;
+  color: #6a6a6a;
+  white-space: nowrap;
+  opacity: 0.8;
 }
 
 .messages {

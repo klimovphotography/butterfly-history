@@ -16,13 +16,31 @@ const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
 
+const AIPRODUCTIV_API_KEY = process.env.AIPRODUCTIV_API_KEY;
+const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
+const AIPRODUCTIV_BASE_URL =
+  process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1";
+
+const AI_API_KEY = AIPRODUCTIV_API_KEY || GEMINI_API_KEY;
+const AI_MODEL = AIPRODUCTIV_API_KEY ? AIPRODUCTIV_MODEL : GEMINI_MODEL;
+const AI_BASE_URL = AIPRODUCTIV_API_KEY ? AIPRODUCTIV_BASE_URL : GEMINI_BASE_URL;
+const AI_ENABLE_IMAGES = AIPRODUCTIV_API_KEY ? false : GEMINI_ENABLE_IMAGES;
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
 
 const server = http.createServer(async (req, res) => {
   try {
-    const url = new URL(req.url || "/", `http://${req.headers.host}`);
+  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+
+    if (req.method === "GET" && url.pathname === "/api/meta") {
+      sendJson(res, 200, {
+        provider: AIPRODUCTIV_API_KEY ? "AIPRODUCTIV" : "GEMINI",
+        model: AI_MODEL,
+      });
+      return;
+    }
 
     if (req.method === "POST" && url.pathname === "/api/alt-history") {
       await handleAltHistory(req, res);
@@ -57,10 +75,10 @@ async function handleAltHistory(req, res) {
     return;
   }
 
-  if (!GEMINI_API_KEY) {
+  if (!AI_API_KEY) {
     sendJson(res, 500, {
       error:
-        "Не найден GEMINI_API_KEY. Добавьте ключ в файл .env и перезапустите сервер.",
+        "Не найден API ключ. Добавьте AIPRODUCTIV_API_KEY или GEMINI_API_KEY в .env и перезапустите сервер.",
     });
     return;
   }
@@ -69,14 +87,14 @@ async function handleAltHistory(req, res) {
   const userPrompt = buildUserPrompt({ event, branch, context, currentYear });
 
   try {
-    const response = await fetch(`${GEMINI_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
+    const response = await fetch(`${AI_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        Authorization: `Bearer ${GEMINI_API_KEY}`,
+        Authorization: `Bearer ${AI_API_KEY}`,
       },
       body: JSON.stringify({
-        model: GEMINI_MODEL,
+        model: AI_MODEL,
         messages: [
           { role: "system", content: systemPrompt },
           { role: "user", content: userPrompt },
@@ -101,7 +119,7 @@ async function handleAltHistory(req, res) {
     }
 
     const scenario = parseScenarioResponse(modelText, currentYear);
-    if (GEMINI_ENABLE_IMAGES && scenario.imagePrompts.length > 0) {
+    if (AI_ENABLE_IMAGES && scenario.imagePrompts.length > 0) {
       scenario.images = await generateScenarioImages(scenario.imagePrompts);
     } else {
       scenario.images = [];
