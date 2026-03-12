@@ -8,6 +8,10 @@ import { fileURLToPath } from "node:url";
 loadEnvFile();
 
 const PORT = Number(process.env.PORT || 3000);
+const AIPRODUCTIV_API_KEY = process.env.AIPRODUCTIV_API_KEY;
+const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
+const AIPRODUCTIV_BASE_URL =
+  process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1/chat/completions";
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.0-flash";
 const GEMINI_BASE_URL =
@@ -151,10 +155,10 @@ async function handleAltHistory(req, res) {
     return;
   }
 
-  if (!GEMINI_API_KEY && !OPENROUTER_API_KEY) {
+  if (!AIPRODUCTIV_API_KEY && !GEMINI_API_KEY && !OPENROUTER_API_KEY) {
     sendJson(res, 500, {
       error:
-        "Не найдены GEMINI_API_KEY и OPENROUTER_API_KEY. Добавьте хотя бы один ключ в .env.",
+        "Не найдены AIPRODUCTIV_API_KEY, GEMINI_API_KEY и OPENROUTER_API_KEY. Добавьте хотя бы один ключ в .env.",
     });
     return;
   }
@@ -174,18 +178,34 @@ async function handleAltHistory(req, res) {
   ];
 
   try {
-    const primary = await requestGemini(messages);
+    let primary;
+    try {
+      primary = await requestAIProductiv(messages);
+    } catch (error) {
+      console.error("AIProductiv request failed:", error);
+      primary = {
+        ok: false,
+        status: 502,
+        error: `Ошибка AIProductiv: ${error?.message || "неизвестная ошибка"}`,
+      };
+    }
+
     let selected = primary;
 
     if (!primary.ok && shouldUseOpenRouterFallback(primary.status)) {
-      const fallback = await requestOpenRouter(messages);
-      if (fallback.ok) {
-        selected = fallback;
-      } else {
-        console.warn(
-          "OpenRouter fallback failed:",
-          fallback.error || "unknown error"
-        );
+      const secondary = await requestGemini(messages);
+      if (secondary.ok) {
+        selected = secondary;
+      } else if (shouldUseOpenRouterFallback(secondary.status)) {
+        const fallback = await requestOpenRouter(messages);
+        if (fallback.ok) {
+          selected = fallback;
+        } else {
+          console.warn(
+            "OpenRouter fallback failed:",
+            fallback.error || "unknown error"
+          );
+        }
       }
     }
 
@@ -440,6 +460,63 @@ async function requestGemini(messages) {
       ok: false,
       status: 502,
       error: `Ошибка Gemini: ${error?.message || "неизвестная ошибка"}`,
+    };
+  }
+}
+
+async function requestAIProductiv(messages) {
+  if (!AIPRODUCTIV_API_KEY) {
+    return {
+      ok: false,
+      status: 500,
+      error: "AIPRODUCTIV_API_KEY не задан.",
+    };
+  }
+
+  try {
+    const response = await fetch(AIPRODUCTIV_BASE_URL, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${AIPRODUCTIV_API_KEY}`,
+      },
+      body: JSON.stringify({
+        model: AIPRODUCTIV_MODEL,
+        messages,
+        temperature: 0.85,
+      }),
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      return {
+        ok: false,
+        status: response.status,
+        error: data?.error?.message || "Ошибка при обращении к AIProductiv API.",
+      };
+    }
+
+    const modelText = extractTextFromChatCompletion(data);
+    if (!modelText) {
+      return {
+        ok: false,
+        status: 502,
+        error: "AIProductiv вернул пустой ответ.",
+      };
+    }
+
+    return {
+      ok: true,
+      status: 200,
+      provider: "aiproductiv",
+      model: AIPRODUCTIV_MODEL,
+      modelText,
+    };
+  } catch (error) {
+    return {
+      ok: false,
+      status: 502,
+      error: `Ошибка AIProductiv: ${error?.message || "неизвестная ошибка"}`,
     };
   }
 }
