@@ -79,6 +79,7 @@ h1 {
   width: 1em;
   height: 1em;
   text-decoration: none;
+  transform: translateY(0.12em);
 }
 
 .hero-logo img {

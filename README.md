@@ -5,7 +5,9 @@
 ## Что нужно
 
 - Установленный Node.js (версия 18+)
-- Gemini API key (Google AI Studio)
+- Один из API ключей:
+  - `GEMINI_API_KEY` (Google AI Studio)
+  - `AIPRODUCTIV_API_KEY` (AIPRODUCTIV)
 
 ## Быстрый запуск
 
@@ -13,13 +15,11 @@
    ```bash
    cd "/Users/vasilijklimov/Documents/Codex project"
    ```
-2. Создайте файл `.env` из шаблона:
-   ```bash
-   cp .env.example .env
-   ```
-3. В файле `.env` вставьте ваш ключ:
+2. В файле `.env` вставьте ваш ключ (или ключи):
    ```env
    GEMINI_API_KEY=ваш_ключ
+   # или
+   AIPRODUCTIV_API_KEY=ваш_ключ
    ```
 4. Запустите сервер:
    ```bash
@@ -32,7 +32,8 @@
 
 1. Введите событие в поле.
 2. Или выберите готовый пример в блоке `Быстрый старт`.
-3. Нажмите `Смоделировать`.
+3. Выберите модель в выпадающем списке.
+4. Нажмите `Смоделировать`.
 4. Получите:
    - текстовый сценарий,
    - таймлайн по конкретным годам,
@@ -42,7 +43,7 @@
 
 ## Файлы проекта
 
-- `server.mjs` - backend и запрос к Gemini API
+- `server.mjs` - backend и запрос к API моделей
 - `public/index.html` - страница сайта
 - `public/style.css` - стили
 - `public/app.js` - логика чата в браузере

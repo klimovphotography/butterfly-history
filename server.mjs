@@ -21,10 +21,81 @@ const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
 const AIPRODUCTIV_BASE_URL =
   process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1";
 
-const AI_API_KEY = AIPRODUCTIV_API_KEY || GEMINI_API_KEY;
-const AI_MODEL = AIPRODUCTIV_API_KEY ? AIPRODUCTIV_MODEL : GEMINI_MODEL;
-const AI_BASE_URL = AIPRODUCTIV_API_KEY ? AIPRODUCTIV_BASE_URL : GEMINI_BASE_URL;
-const AI_ENABLE_IMAGES = AIPRODUCTIV_API_KEY ? false : GEMINI_ENABLE_IMAGES;
+
+const MODEL_CATALOG = [
+  {
+    id: "aiproductiv-gpt-5.2",
+    label: "GPT-5.2",
+    provider: "AIPRODUCTIV",
+    providerLabel: "AIPRODUCTIV",
+    model: AIPRODUCTIV_MODEL,
+    baseUrl: AIPRODUCTIV_BASE_URL,
+    apiKey: AIPRODUCTIV_API_KEY,
+    enableImages: false,
+  },
+  {
+    id: "gemini-2.5-flash",
+    label: "Gemini 2.5 Flash",
+    provider: "GEMINI",
+    providerLabel: "GEMINI",
+    model: GEMINI_MODEL,
+    baseUrl: GEMINI_BASE_URL,
+    apiKey: GEMINI_API_KEY,
+    enableImages: GEMINI_ENABLE_IMAGES,
+  },
+];
+
+const UI_MODEL_IDS = ["aiproductiv-gpt-5.2"];
+
+function isModelEnabled(model) {
+  if (!model?.apiKey) return false;
+  return true;
+}
+
+function getDefaultModelId() {
+  if (AIPRODUCTIV_API_KEY) return "aiproductiv-gpt-5.2";
+  if (GEMINI_API_KEY) return "gemini-2.5-flash";
+  return null;
+}
+
+function getModelById(modelId) {
+  if (!modelId) return null;
+  return MODEL_CATALOG.find((model) => model.id === modelId) || null;
+}
+
+function getUiModels() {
+  const uiModels = UI_MODEL_IDS.map((id) => getModelById(id)).filter(Boolean);
+  if (uiModels.length > 0) {
+    return uiModels;
+  }
+  return MODEL_CATALOG;
+}
+
+function pickModelConfig(requestedId) {
+  const requested = getModelById(requestedId);
+  if (requested && isModelEnabled(requested)) {
+    return { model: requested, isFallback: false };
+  }
+
+  const fallbackId = getDefaultModelId();
+  const fallback = getModelById(fallbackId);
+  if (fallback && isModelEnabled(fallback)) {
+    return { model: fallback, isFallback: true };
+  }
+
+  return { model: null, isFallback: false };
+}
+
+function missingModelMessage(model) {
+  if (!model) {
+    return (
+      "Не найден API ключ. Добавьте AIPRODUCTIV_API_KEY или GEMINI_API_KEY " +
+      "в .env и перезапустите сервер."
+    );
+  }
+
+  return `Для ${model.providerLabel} нужен API ключ в .env.`;
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -35,9 +106,19 @@ const server = http.createServer(async (req, res) => {
   const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/api/meta") {
+      const defaultModelId = getDefaultModelId();
+      const { model } = pickModelConfig(defaultModelId);
+      const uiModels = getUiModels();
       sendJson(res, 200, {
-        provider: AIPRODUCTIV_API_KEY ? "AIPRODUCTIV" : "GEMINI",
-        model: AI_MODEL,
+        provider: model?.providerLabel || "",
+        model: model?.label || "",
+        selectedModelId: model?.id || "",
+        models: uiModels.map((entry) => ({
+          id: entry.id,
+          label: entry.label,
+          provider: entry.providerLabel,
+          enabled: isModelEnabled(entry),
+        })),
       });
       return;
     }
@@ -68,6 +149,8 @@ async function handleAltHistory(req, res) {
   const event = typeof body.event === "string" ? body.event.trim() : "";
   const branch = typeof body.branch === "string" ? body.branch.trim() : "";
   const context = normalizeContext(body.context);
+  const requestedModelId =
+    typeof body.modelId === "string" ? body.modelId.trim() : "";
   const currentYear = new Date().getFullYear();
 
   if (!event) {
@@ -75,11 +158,10 @@ async function handleAltHistory(req, res) {
     return;
   }
 
-  if (!AI_API_KEY) {
-    sendJson(res, 500, {
-      error:
-        "Не найден API ключ. Добавьте AIPRODUCTIV_API_KEY или GEMINI_API_KEY в .env и перезапустите сервер.",
-    });
+  const { model: modelConfig } = pickModelConfig(requestedModelId);
+  if (!modelConfig) {
+    const requestedModel = getModelById(requestedModelId);
+    sendJson(res, 500, { error: missingModelMessage(requestedModel) });
     return;
   }
 
@@ -87,39 +169,42 @@ async function handleAltHistory(req, res) {
   const userPrompt = buildUserPrompt({ event, branch, context, currentYear });
 
   try {
-    const response = await fetch(`${AI_BASE_URL.replace(/\/+$/, "")}/chat/completions`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        Authorization: `Bearer ${AI_API_KEY}`,
-      },
-      body: JSON.stringify({
-        model: AI_MODEL,
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        temperature: 0.85,
-      }),
-    });
+    const baseUrl = modelConfig.baseUrl.replace(/\/+$/, "");
+    const headers = {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${modelConfig.apiKey}`,
+    };
 
-    const data = await response.json();
+    const payload = {
+      model: modelConfig.model,
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.85,
+    };
+
+    const { response, data } = await fetchJson(`${baseUrl}/chat/completions`, {
+      method: "POST",
+      headers,
+      body: JSON.stringify(payload),
+    });
 
     if (!response.ok) {
       const apiMessage =
-        data?.error?.message || "Ошибка при обращении к Gemini API.";
+        data?.error?.message || "Ошибка при обращении к API модели.";
       sendJson(res, response.status, { error: apiMessage });
       return;
     }
 
     const modelText = extractTextFromChatCompletion(data);
     if (!modelText) {
-      sendJson(res, 502, { error: "Gemini вернул пустой ответ." });
+      sendJson(res, 502, { error: "Модель вернула пустой ответ." });
       return;
     }
 
     const scenario = parseScenarioResponse(modelText, currentYear);
-    if (AI_ENABLE_IMAGES && scenario.imagePrompts.length > 0) {
+    if (modelConfig.enableImages && scenario.imagePrompts.length > 0) {
       scenario.images = await generateScenarioImages(scenario.imagePrompts);
     } else {
       scenario.images = [];
@@ -128,7 +213,11 @@ async function handleAltHistory(req, res) {
     sendJson(res, 200, { scenario });
   } catch (error) {
     console.error(error);
-    sendJson(res, 500, { error: "Не удалось получить ответ от Gemini API." });
+    const message =
+      error && typeof error.message === "string"
+        ? error.message
+        : "Не удалось получить ответ от API модели.";
+    sendJson(res, 500, { error: message });
   }
 }
 
@@ -151,6 +240,13 @@ function buildSystemPrompt(currentYear) {
 - Без мистики и фантастики.
 `.trim();
 }
+
+async function fetchJson(url, options) {
+  const response = await fetch(url, options);
+  const data = await response.json();
+  return { response, data };
+}
+
 
 function buildUserPrompt({ event, branch, context, currentYear }) {
   const serializedContext =
