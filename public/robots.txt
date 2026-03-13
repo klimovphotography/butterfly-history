@@ -1,0 +1,3 @@
+User-agent: *
+Allow: /
+Sitemap: https://butterfly-history.ru/sitemap.xml
