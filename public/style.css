@@ -369,6 +369,163 @@ button:disabled {
   line-height: 1.35;
 }
 
+.share-card {
+  margin: 12px 0 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+}
+
+.share-card-frame {
+  width: min(100%, 360px);
+  aspect-ratio: 9 / 16;
+  border-radius: 22px;
+  padding: 18px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding-top: 34px;
+  padding-bottom: 28px;
+  color: #f7f7f7;
+  background:
+    radial-gradient(circle at 20% 12%, rgba(124, 225, 217, 0.22), transparent 45%),
+    radial-gradient(circle at 80% 80%, rgba(87, 208, 198, 0.18), transparent 40%),
+    linear-gradient(160deg, #0a0a0a, #121212);
+  border: 1px solid rgba(124, 225, 217, 0.3);
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.35);
+  position: relative;
+  overflow: hidden;
+}
+
+.share-card-frame::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background-image:
+    linear-gradient(rgba(255, 255, 255, 0.06) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.06) 1px, transparent 1px);
+  background-size: 24px 24px;
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.share-card-eyebrow {
+  margin: 28px 0 0;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.22em;
+  font-weight: 700;
+  color: #7ce1d9;
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-title {
+  margin: 0;
+  font-size: 1.35rem;
+  line-height: 1.05;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-subtitle {
+  margin: 0;
+  font-size: 0.92rem;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1.35;
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-list {
+  display: grid;
+  gap: 6px;
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-item {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 10px;
+  align-items: start;
+  padding: 7px 10px;
+  border-radius: 12px;
+  background: rgba(10, 10, 10, 0.6);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.share-card-year {
+  font-family: "IBM Plex Mono", monospace;
+  font-size: 0.8rem;
+  font-weight: 700;
+  color: #7ce1d9;
+}
+
+.share-card-text {
+  font-size: 0.82rem;
+  line-height: 1.3;
+  color: rgba(255, 255, 255, 0.86);
+}
+
+.share-card-footer {
+  margin-top: auto;
+  position: relative;
+  z-index: 1;
+}
+
+.share-card-tag {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: #7ce1d9;
+  color: #061413;
+  font-size: 0.78rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-align: center;
+  box-shadow:
+    0 6px 20px rgba(124, 225, 217, 0.35);
+}
+
+.share-card-domain {
+  display: block;
+  font-size: 0.88rem;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-shadow: 0 0 14px rgba(124, 225, 217, 0.55);
+}
+
+.share-card-cta {
+  display: block;
+  font-size: 0.64rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+}
+
+.share-card-download {
+  border-radius: 999px;
+  padding: 9px 16px;
+  font: inherit;
+  font-weight: 700;
+  border: 1px solid rgba(124, 225, 217, 0.6);
+  background: rgba(10, 10, 10, 0.55);
+  color: #f7f7f7;
+  cursor: pointer;
+  font-size: 0.8rem;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+}
+
+.share-card-download:hover {
+  background: #7ce1d9;
+  color: #061413;
+  border-color: #7ce1d9;
+}
+
 .history-card {
   margin-top: 16px;
   border: 1px solid var(--line);
