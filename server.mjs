@@ -128,8 +128,8 @@ const server = http.createServer(async (req, res) => {
       return;
     }
 
-    if (req.method === "GET") {
-      await serveStaticFile(url.pathname, res);
+    if (req.method === "GET" || req.method === "HEAD") {
+      await serveStaticFile(url.pathname, res, req.method);
       return;
     }
 
@@ -680,7 +680,7 @@ function extractTextFromChatCompletion(data) {
   return texts.join("\n").trim();
 }
 
-async function serveStaticFile(pathname, res) {
+async function serveStaticFile(pathname, res, method = "GET") {
   const targetPath = pathname === "/" ? "/index.html" : pathname;
   const filePath = path.resolve(PUBLIC_DIR, `.${targetPath}`);
 
@@ -692,6 +692,10 @@ async function serveStaticFile(pathname, res) {
   try {
     const content = await fsp.readFile(filePath);
     res.writeHead(200, { "Content-Type": getContentType(filePath) });
+    if (method === "HEAD") {
+      res.end();
+      return;
+    }
     res.end(content);
   } catch (error) {
     if (error?.code === "ENOENT") {
@@ -713,6 +717,17 @@ function getContentType(filePath) {
       return "application/javascript; charset=utf-8";
     case ".json":
       return "application/json; charset=utf-8";
+    case ".png":
+      return "image/png";
+    case ".ico":
+      return "image/x-icon";
+    case ".svg":
+      return "image/svg+xml";
+    case ".jpg":
+    case ".jpeg":
+      return "image/jpeg";
+    case ".webp":
+      return "image/webp";
     default:
       return "application/octet-stream";
   }
