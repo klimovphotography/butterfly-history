@@ -224,7 +224,7 @@ function addScenarioMessage(scenario, options = {}) {
   }
 
   messages.append(article);
-  messages.scrollTop = messages.scrollHeight;
+  scrollMessageToStart(article);
 }
 
 function buildYearTimeline(items) {
@@ -305,6 +305,14 @@ function addTextMessage(role, text) {
 function removeMessage(id) {
   const item = messages.querySelector(`[data-id="${id}"]`);
   if (item) item.remove();
+}
+
+function scrollMessageToStart(element) {
+  if (!element) return;
+  const containerTop = messages.getBoundingClientRect().top;
+  const elementTop = element.getBoundingClientRect().top;
+  const offset = elementTop - containerTop + messages.scrollTop;
+  messages.scrollTop = Math.max(0, offset);
 }
 
 function normalizeScenario(data) {
