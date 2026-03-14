@@ -339,19 +339,19 @@ function buildShareCard(card) {
   frame.append(eyebrow, title, subtitle, list, footer);
   wrapper.append(frame);
 
-  const downloadButton = document.createElement("button");
-  downloadButton.type = "button";
-  downloadButton.className = "share-card-download";
-  downloadButton.textContent = "Скачать как PNG";
-  downloadButton.addEventListener("click", async () => {
-    await downloadShareCardPng(frame, card);
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "share-card-download";
+  openButton.textContent = "Открыть изображение";
+  openButton.addEventListener("click", async () => {
+    await openShareCardImage(frame, card);
   });
 
-  wrapper.append(downloadButton);
+  wrapper.append(openButton);
   return wrapper;
 }
 
-async function downloadShareCardPng(target, card) {
+async function openShareCardImage(target, card) {
   if (!target || typeof window.html2canvas !== "function") {
     return;
   }
@@ -384,12 +384,18 @@ async function downloadShareCardPng(target, card) {
     });
 
     const dataUrl = canvas.toDataURL("image/png");
-    const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = buildShareCardFilename(card);
-    document.body.append(link);
-    link.click();
-    link.remove();
+    const win = window.open();
+    if (win) {
+      win.document.write(`<img src="${dataUrl}" alt="Share card" style="width:100%;height:auto;display:block;margin:0;" />`);
+      win.document.close();
+    } else {
+      const link = document.createElement("a");
+      link.href = dataUrl;
+      link.download = buildShareCardFilename(card);
+      document.body.append(link);
+      link.click();
+      link.remove();
+    }
   } catch {
     // Ignore download errors silently.
   }
