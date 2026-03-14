@@ -203,7 +203,7 @@ async function handleAltHistory(req, res) {
       return;
     }
 
-    const scenario = parseScenarioResponse(modelText, currentYear);
+    const scenario = parseScenarioResponse(modelText, currentYear, event);
     if (modelConfig.enableImages && scenario.imagePrompts.length > 0) {
       scenario.images = await generateScenarioImages(scenario.imagePrompts);
     } else {
@@ -227,12 +227,15 @@ function buildSystemPrompt(currentYear) {
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-420 слов.
-- "timeline": массив из ровно 4 объектов:
+- "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative, более хайповый в духе "Намедни":
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
 
 Ограничения:
 - Это гипотеза, а не факт.
@@ -300,12 +303,18 @@ function normalizeContext(value) {
   });
 }
 
-function parseScenarioResponse(modelText, currentYear) {
+function parseScenarioResponse(modelText, currentYear, event) {
   const parsed = parseJsonFromModelText(modelText);
   const narrative = pickString(parsed?.narrative) || modelText.trim();
   const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative);
   const branches = normalizeBranches(parsed?.branches);
   const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative);
+  const shareCard = normalizeShareCard(parsed?.share_card, {
+    narrative,
+    timeline,
+    currentYear,
+    event,
+  });
 
   return {
     narrative,
@@ -313,6 +322,7 @@ function parseScenarioResponse(modelText, currentYear) {
     branches,
     imagePrompts,
     images: [],
+    shareCard,
   };
 }
 
@@ -352,7 +362,7 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
   }
 
   const cleaned = rawTimeline
-    .slice(0, 6)
+    .slice(0, 8)
     .map((item, index) => ({
       year: normalizeYear(item?.year) ?? defaults[Math.min(index, defaults.length - 1)].year,
       title:
@@ -381,12 +391,12 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
 
   cleaned.sort((a, b) => a.year - b.year);
 
-  while (cleaned.length < 4) {
-    const fallback = defaults[cleaned.length];
+  while (cleaned.length < 6) {
+    const fallback = defaults[Math.min(cleaned.length, defaults.length - 1)];
     cleaned.push({ ...fallback });
   }
 
-  const timeline = cleaned.slice(0, 4);
+  const timeline = cleaned.slice(0, 6);
   timeline[timeline.length - 1].year = currentYear;
   timeline.sort((a, b) => a.year - b.year);
   return timeline;
@@ -406,9 +416,19 @@ function buildDefaultTimeline(currentYear, narrative) {
       details: "Новые политические и экономические правила начинают стабилизироваться.",
     },
     {
+      year: currentYear - 50,
+      title: "Институциональный сдвиг",
+      details: "Изменения входят в рутину управления и становятся нормой.",
+    },
+    {
       year: currentYear - 35,
       title: "Глобальный эффект",
       details: "Изменения переходят на мировой уровень и влияют на союзы и технологии.",
+    },
+    {
+      year: currentYear - 15,
+      title: "Эхо перемен",
+      details: "Новые поколения живут в иной политической и культурной реальности.",
     },
     {
       year: currentYear,
@@ -462,6 +482,114 @@ function normalizeImagePrompts(rawPrompts, narrative) {
     `Альтернативная история, кинематографичная сцена, исторический антураж, высокая детализация: ${summary}`,
     `Панорама города в альтернативном мире, исторический реализм, широкоугольный кадр, реалистичный свет`,
   ];
+}
+
+function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event }) {
+  const fallback = buildFallbackShareCard({ narrative, timeline, currentYear, event });
+
+  if (!rawCard || typeof rawCard !== "object") {
+    return fallback;
+  }
+
+  const title = pickString(rawCard.title) || fallback.title;
+  const subtitle = pickString(rawCard.subtitle) || fallback.subtitle;
+  const footer = "butterfly-history.ru\nсмоделировать свою ветку реальности";
+  const rawItems = Array.isArray(rawCard.items)
+    ? rawCard.items
+    : Array.isArray(rawCard.timeline)
+      ? rawCard.timeline
+      : Array.isArray(rawCard.lines)
+        ? rawCard.lines
+        : [];
+
+  const items = rawItems
+    .map((item, index) => {
+      if (typeof item === "string") {
+        return {
+          year: fallback.items[Math.min(index, fallback.items.length - 1)].year,
+          text: item.trim(),
+        };
+      }
+      const year = normalizeYear(item?.year) ?? fallback.items[Math.min(index, fallback.items.length - 1)].year;
+      const text =
+        pickString(item?.text) ||
+        pickString(item?.title) ||
+        pickString(item?.details) ||
+        fallback.items[Math.min(index, fallback.items.length - 1)].text;
+      return { year, text };
+    })
+    .filter((item) => item.text);
+
+  let normalized = ensureUniqueYears(items.slice(0, 6), timeline, currentYear);
+  while (normalized.length < 5) {
+    normalized.push(fallback.items[normalized.length]);
+  }
+  normalized = ensureUniqueYears(normalized, timeline, currentYear);
+
+  return {
+    title,
+    subtitle,
+    items: normalized,
+    footer,
+  };
+}
+
+function ensureUniqueYears(items, timeline, currentYear) {
+  const fallbackYears = timeline.map((point) => point.year).filter(Boolean);
+  const used = new Set();
+  const result = [];
+
+  for (let i = 0; i < items.length; i += 1) {
+    const baseYear = items[i]?.year ?? fallbackYears[i] ?? currentYear;
+    let year = baseYear;
+    while (used.has(year)) {
+      year += 1;
+    }
+    used.add(year);
+    result.push({ ...items[i], year });
+  }
+
+  return result;
+}
+
+function buildFallbackShareCard({ narrative, timeline, currentYear, event }) {
+  const titleBase = pickString(event) || "Что если?";
+  const title = titleBase.length > 72 ? `${titleBase.slice(0, 69)}…` : titleBase;
+  const subtitle = buildCardSubtitle(narrative);
+  const items = timeline.slice(0, 6).map((point) => ({
+    year: point.year || currentYear,
+    text: pickString(point.title) || pickString(point.details) || "Ключевой поворот истории.",
+  }));
+
+  const trimmed = items
+    .map((item) => ({
+      year: item.year,
+      text: item.text.length > 90 ? `${item.text.slice(0, 87)}…` : item.text,
+    }))
+    .slice(0, 6);
+
+  while (trimmed.length < 5) {
+    trimmed.push({
+      year: currentYear,
+      text: "Финальный эффект захватывает современность.",
+    });
+  }
+
+  return {
+    title,
+    subtitle,
+    items: trimmed,
+    footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
+  };
+}
+
+function buildCardSubtitle(narrative) {
+  const text = pickString(narrative).replace(/\s+/g, " ").trim();
+  if (!text) return "Хроника альтернативного перелома — коротко и дерзко.";
+  const sentence = text.split(/[.!?]/).find((part) => part.trim());
+  if (!sentence) return "Хроника альтернативного перелома — коротко и дерзко.";
+  const trimmed = sentence.trim();
+  return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
 }
 
 async function generateScenarioImages(prompts) {
