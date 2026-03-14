@@ -17,7 +17,8 @@ jobs:
           script: |
             set -e
             cd /root/butterfly
-            git pull origin main
+            git fetch origin main
+            git reset --hard origin/main
             npm install
             pm2 restart butterfly --update-env
       - name: Notify Telegram
