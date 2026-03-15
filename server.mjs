@@ -20,6 +20,7 @@ const AIPRODUCTIV_API_KEY = process.env.AIPRODUCTIV_API_KEY;
 const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
 const AIPRODUCTIV_BASE_URL =
   process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1";
+const SITE_URL = (process.env.SITE_URL || "").replace(/\/+$/, "");
 
 
 const MODEL_CATALOG = [
@@ -126,6 +127,17 @@ const server = http.createServer(async (req, res) => {
     if (req.method === "POST" && url.pathname === "/api/alt-history") {
       await handleAltHistory(req, res);
       return;
+    }
+
+    if (req.method === "GET" || req.method === "HEAD") {
+      if (url.pathname === "/sitemap.xml") {
+        await handleSitemap(req, res);
+        return;
+      }
+      if (url.pathname === "/robots.txt") {
+        handleRobots(req, res);
+        return;
+      }
     }
 
     if (req.method === "GET" || req.method === "HEAD") {
@@ -1019,6 +1031,81 @@ async function readJsonBody(req) {
 
     req.on("error", reject);
   });
+}
+
+function getSiteUrl(req) {
+  if (SITE_URL) return SITE_URL;
+  const forwardedProto = req.headers["x-forwarded-proto"];
+  const proto = typeof forwardedProto === "string" && forwardedProto.trim()
+    ? forwardedProto.split(",")[0].trim()
+    : "http";
+  const host = req.headers.host || "localhost";
+  return `${proto}://${host}`;
+}
+
+async function collectSitemapUrls(siteUrl) {
+  const entries = await fsp.readdir(PUBLIC_DIR, { withFileTypes: true });
+  const htmlFiles = entries
+    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .map((entry) => entry.name);
+
+  const urls = [];
+  for (const fileName of htmlFiles) {
+    const isIndex = fileName.toLowerCase() === "index.html";
+    const routePath = isIndex ? "/" : `/${fileName.replace(/\.html$/i, "")}`;
+    const filePath = path.join(PUBLIC_DIR, fileName);
+    let lastmod = null;
+    try {
+      const stats = await fsp.stat(filePath);
+      lastmod = stats.mtime.toISOString().slice(0, 10);
+    } catch {
+      lastmod = null;
+    }
+    urls.push({ loc: `${siteUrl}${routePath}`, lastmod });
+  }
+
+  if (urls.length === 0) {
+    urls.push({ loc: siteUrl, lastmod: null });
+  }
+
+  return urls;
+}
+
+function buildSitemapXml(urls) {
+  const body = urls
+    .map((entry) => {
+      const lastmod = entry.lastmod
+        ? `\n    <lastmod>${escapeXml(entry.lastmod)}</lastmod>`
+        : "";
+      return `  <url>\n    <loc>${escapeXml(entry.loc)}</loc>${lastmod}\n  </url>`;
+    })
+    .join("\n");
+  return `<?xml version="1.0" encoding="UTF-8"?>\n` +
+    `<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9">\n` +
+    `${body}\n</urlset>\n`;
+}
+
+async function handleSitemap(req, res) {
+  const siteUrl = getSiteUrl(req);
+  const urls = await collectSitemapUrls(siteUrl);
+  const xml = buildSitemapXml(urls);
+  res.writeHead(200, { "Content-Type": "application/xml; charset=utf-8" });
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(xml);
+}
+
+function handleRobots(req, res) {
+  const siteUrl = getSiteUrl(req);
+  const content = `User-agent: *\nAllow: /\nSitemap: ${siteUrl}/sitemap.xml\n`;
+  res.writeHead(200, { "Content-Type": "text/plain; charset=utf-8" });
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(content);
 }
 
 function sendJson(res, statusCode, data) {
