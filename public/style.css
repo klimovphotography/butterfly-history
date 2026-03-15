@@ -194,6 +194,7 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 10px;
+  flex-wrap: wrap;
 }
 
 .random-btn {
@@ -212,6 +213,46 @@ button:disabled {
   background: #111111;
   color: #ffffff;
   border-color: #111111;
+}
+
+.mode-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 4px;
+  border-radius: 999px;
+  border: 1px solid var(--line-strong);
+  background: #ffffff;
+}
+
+.mode-tab {
+  border: 1px solid transparent;
+  background: transparent;
+  color: #111111;
+  padding: 7px 12px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  border-radius: 999px;
+  white-space: nowrap;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease, border-color 150ms ease;
+}
+
+.mode-tab:hover {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+  transform: none;
+}
+
+.mode-tab.is-active {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.mode-tab:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
 }
 
 .provider-row {
@@ -475,6 +516,8 @@ button:disabled {
   margin-top: auto;
   position: relative;
   z-index: 1;
+  display: flex;
+  justify-content: center;
 }
 
 .share-card-tag {
@@ -605,6 +648,16 @@ button:disabled {
 
   .action-group {
     width: 100%;
+  }
+
+  .mode-tabs {
+    width: 100%;
+    justify-content: flex-start;
+  }
+
+  .mode-tab {
+    flex: 1 1 140px;
+    text-align: center;
   }
 
   #submit-btn {

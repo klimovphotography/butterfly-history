@@ -149,6 +149,7 @@ async function handleAltHistory(req, res) {
   const event = typeof body.event === "string" ? body.event.trim() : "";
   const branch = typeof body.branch === "string" ? body.branch.trim() : "";
   const context = normalizeContext(body.context);
+  const modeId = typeof body.mode === "string" ? body.mode.trim() : "";
   const requestedModelId =
     typeof body.modelId === "string" ? body.modelId.trim() : "";
   const currentYear = new Date().getFullYear();
@@ -165,45 +166,20 @@ async function handleAltHistory(req, res) {
     return;
   }
 
-  const systemPrompt = buildSystemPrompt(currentYear);
+  const modeConfig = resolveModeConfig(modeId);
+  const systemMessage = buildSystemMessage(modeConfig.id, currentYear);
   const userPrompt = buildUserPrompt({ event, branch, context, currentYear });
 
   try {
-    const baseUrl = modelConfig.baseUrl.replace(/\/+$/, "");
-    const headers = {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${modelConfig.apiKey}`,
-    };
-
-    const payload = {
-      model: modelConfig.model,
-      messages: [
-        { role: "system", content: systemPrompt },
-        { role: "user", content: userPrompt },
-      ],
-      temperature: 0.85,
-    };
-
-    const { response, data } = await fetchJson(`${baseUrl}/chat/completions`, {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
+    const scenario = await generateScenario({
+      modelConfig,
+      systemMessage,
+      userPrompt,
+      currentYear,
+      event,
+      temperature: modeConfig.temperature,
     });
 
-    if (!response.ok) {
-      const apiMessage =
-        data?.error?.message || "Ошибка при обращении к API модели.";
-      sendJson(res, response.status, { error: apiMessage });
-      return;
-    }
-
-    const modelText = extractTextFromChatCompletion(data);
-    if (!modelText) {
-      sendJson(res, 502, { error: "Модель вернула пустой ответ." });
-      return;
-    }
-
-    const scenario = parseScenarioResponse(modelText, currentYear, event);
     if (modelConfig.enableImages && scenario.imagePrompts.length > 0) {
       scenario.images = await generateScenarioImages(scenario.imagePrompts);
     } else {
@@ -221,27 +197,44 @@ async function handleAltHistory(req, res) {
   }
 }
 
-function buildSystemPrompt(currentYear) {
-  return `
-Ты создаешь правдоподобные сценарии альтернативной истории на русском языке.
-Нельзя писать markdown, пояснения, префиксы или блоки кода.
-Верни только корректный JSON-объект с полями:
-- "narrative": строка 220-420 слов.
-- "timeline": массив из ровно 6 объектов:
-  {"year": number, "title": string, "details": string}
-  Годы должны идти по возрастанию и быть конкретными числами.
-  Последняя точка timeline должна быть про текущий год ${currentYear}.
-- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative, более хайповый в духе "Намедни":
-  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+async function generateScenario({
+  modelConfig,
+  systemMessage,
+  userPrompt,
+  currentYear,
+  event,
+  temperature,
+}) {
+  const baseUrl = modelConfig.baseUrl.replace(/\/+$/, "");
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${modelConfig.apiKey}`,
+  };
 
-Ограничения:
-- Это гипотеза, а не факт.
-- Строгая причинно-следственная логика.
-- Без мистики и фантастики.
-`.trim();
+  const payload = {
+    model: modelConfig.model,
+    messages: [systemMessage, { role: "user", content: userPrompt }],
+    temperature: Number.isFinite(temperature) ? temperature : 0.6,
+  };
+
+  const { response, data } = await fetchJson(`${baseUrl}/chat/completions`, {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const apiMessage =
+      data?.error?.message || "Ошибка при обращении к API модели.";
+    throw new Error(apiMessage);
+  }
+
+  const modelText = extractTextFromChatCompletion(data);
+  if (!modelText) {
+    throw new Error("Модель вернула пустой ответ.");
+  }
+
+  return parseScenarioResponse(modelText, currentYear, event);
 }
 
 async function fetchJson(url, options) {
@@ -279,6 +272,38 @@ ${serializedContext}
 `.trim();
 }
 
+function resolveModeConfig(rawMode) {
+  const mode = String(rawMode || "").toLowerCase();
+  switch (mode) {
+    case "dark":
+      return {
+        id: "dark",
+        temperature: 0.3,
+      };
+    case "prosperity":
+      return {
+        id: "prosperity",
+        temperature: 0.6,
+      };
+    case "madness":
+      return {
+        id: "madness",
+        temperature: 0.9,
+      };
+    case "humor":
+      return {
+        id: "humor",
+        temperature: 0.9,
+      };
+    case "realism":
+    default:
+      return {
+        id: "realism",
+        temperature: 0.3,
+      };
+  }
+}
+
 function normalizeContext(value) {
   if (!Array.isArray(value)) {
     return [];
@@ -301,6 +326,107 @@ function normalizeContext(value) {
 
     return { branch, narrative, timeline };
   });
+}
+
+function buildSystemMessage(modeId, currentYear) {
+  switch (modeId) {
+    case "dark":
+      return {
+        role: "system",
+        content: `
+Ты летописец катастроф. Опиши наихудший из возможных вариантов. Каждое решение ведет к краху войнам и упадку. Атмосфера тотальной безысходности.
+Нельзя писать markdown, пояснения, префиксы или блоки кода.
+Верни только корректный JSON-объект с полями:
+- "narrative": строка 220-420 слов.
+- "timeline": массив из ровно 6 объектов:
+  {"year": number, "title": string, "details": string}
+  Годы должны идти по возрастанию и быть конкретными числами.
+  Последняя точка timeline должна быть про текущий год ${currentYear}.
+- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
+- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative:
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+`.trim(),
+      };
+    case "prosperity":
+      return {
+        role: "system",
+        content: `
+Ты оптимистичный футуролог. Опиши утопичный исход где люди решают конфликты мирным путем. Фокус на научном и социальном прогрессе.
+Нельзя писать markdown, пояснения, префиксы или блоки кода.
+Верни только корректный JSON-объект с полями:
+- "narrative": строка 220-420 слов.
+- "timeline": массив из ровно 6 объектов:
+  {"year": number, "title": string, "details": string}
+  Годы должны идти по возрастанию и быть конкретными числами.
+  Последняя точка timeline должна быть про текущий год ${currentYear}.
+- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
+- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative:
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+`.trim(),
+      };
+    case "madness":
+      return {
+        role: "system",
+        content: `
+Ты автор артхаусного кино. Напиши абсолютно абсурдный сценарий где ломаются базовые законы логики. Происходит лютая дичь и пространственные парадоксы.
+Нельзя писать markdown, пояснения, префиксы или блоки кода.
+Верни только корректный JSON-объект с полями:
+- "narrative": строка 220-420 слов.
+- "timeline": массив из ровно 6 объектов:
+  {"year": number, "title": string, "details": string}
+  Годы должны идти по возрастанию и быть конкретными числами.
+  Последняя точка timeline должна быть про текущий год ${currentYear}.
+- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
+- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative:
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+`.trim(),
+      };
+    case "humor":
+      return {
+        role: "system",
+        content: `
+Ты циничный комик и автор сатирического издания. Жестко высмеивай исторические события и пафос правителей. Текст обязан быть пропитан едким сарказмом и нелепыми метафорами. Никакой серьезной аналитики.
+Нельзя писать markdown, пояснения, префиксы или блоки кода.
+Верни только корректный JSON-объект с полями:
+- "narrative": строка 220-420 слов.
+- "timeline": массив из ровно 6 объектов:
+  {"year": number, "title": string, "details": string}
+  Годы должны идти по возрастанию и быть конкретными числами.
+  Последняя точка timeline должна быть про текущий год ${currentYear}.
+- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
+- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative:
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+`.trim(),
+      };
+    case "realism":
+    default:
+      return {
+        role: "system",
+        content: `
+Ты строгий академический историк. Твоя задача выдать максимально правдоподобный сценарий альтернативной истории. Опирайся исключительно на экономику демографию и политику. Сухой аналитический стиль.
+Нельзя писать markdown, пояснения, префиксы или блоки кода.
+Верни только корректный JSON-объект с полями:
+- "narrative": строка 220-420 слов.
+- "timeline": массив из ровно 6 объектов:
+  {"year": number, "title": string, "details": string}
+  Годы должны идти по возрастанию и быть конкретными числами.
+  Последняя точка timeline должна быть про текущий год ${currentYear}.
+- "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
+- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
+- "share_card": объект для сторис, НЕ повторяющий narrative:
+  {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
+  "items" содержит 5-6 коротких пунктов (до ~90 символов каждый).
+`.trim(),
+      };
+  }
 }
 
 function parseScenarioResponse(modelText, currentYear, event) {
@@ -890,7 +1016,10 @@ async function readJsonBody(req) {
 }
 
 function sendJson(res, statusCode, data) {
-  res.writeHead(statusCode, { "Content-Type": "application/json; charset=utf-8" });
+  res.writeHead(statusCode, {
+    "Content-Type": "application/json; charset=utf-8",
+    "Cache-Control": "no-store, max-age=0",
+  });
   res.end(JSON.stringify(data));
 }
 

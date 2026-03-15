@@ -6,6 +6,7 @@ const historyList = document.getElementById("history-list");
 const clearHistoryButton = document.getElementById("clear-history-btn");
 const randomButton = document.getElementById("random-btn");
 const providerPill = document.getElementById("provider-pill");
+const modeTabs = document.querySelectorAll(".mode-tab");
 
 const HISTORY_KEY = "butterfly_history_v2";
 const HISTORY_LIMIT = 20;
@@ -26,9 +27,29 @@ const QUICK_START_EXAMPLES = [
 let history = readHistory();
 let activeScenario = null;
 let isLoading = false;
+let activeMode = "realism";
+const MODE_LABELS = {
+  realism: "Реализм",
+  dark: "Мрачная хроника",
+  prosperity: "Эпоха процветания",
+  madness: "Безумие",
+  humor: "Юмор",
+};
+
+initModeTabs();
 
 renderHistory();
 loadProviderMeta();
+
+input.addEventListener("keydown", (event) => {
+  if (event.key !== "Enter" || event.shiftKey) return;
+  event.preventDefault();
+  if (typeof form.requestSubmit === "function") {
+    form.requestSubmit(button);
+  } else {
+    form.dispatchEvent(new Event("submit", { cancelable: true }));
+  }
+});
 
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
@@ -67,6 +88,7 @@ async function startScenario(rawText) {
     event: eventText,
     branch: "",
     context: [],
+    mode: activeMode,
   });
 }
 
@@ -85,6 +107,7 @@ async function continueScenario(branchText) {
       narrative: step.narrative,
       timeline: step.timeline,
     })),
+    mode: activeMode,
   });
 }
 
@@ -122,7 +145,7 @@ async function requestScenario(payload) {
       });
     }
 
-    addScenarioMessage(scenario, { interactive: true });
+    addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
     pushHistory({
       event: payload.branch ? `${payload.event} -> ${payload.branch}` : payload.event,
       rootEvent: payload.event,
@@ -137,6 +160,32 @@ async function requestScenario(payload) {
     isLoading = false;
     setUiBusy(false);
     input.focus();
+  }
+}
+
+function initModeTabs() {
+  if (!modeTabs.length) return;
+  const initial = Array.from(modeTabs).find((tab) => tab.classList.contains("is-active"));
+  if (initial && initial.dataset.mode) {
+    activeMode = initial.dataset.mode;
+  } else {
+    setActiveMode(activeMode);
+  }
+
+  for (const tab of modeTabs) {
+    tab.addEventListener("click", () => {
+      const mode = tab.dataset.mode || "realism";
+      setActiveMode(mode);
+    });
+  }
+}
+
+function setActiveMode(mode) {
+  activeMode = mode;
+  for (const tab of modeTabs) {
+    const isActive = tab.dataset.mode === mode;
+    tab.classList.toggle("is-active", isActive);
+    tab.setAttribute("aria-selected", isActive ? "true" : "false");
   }
 }
 
@@ -166,13 +215,14 @@ function setUiBusy(state) {
 
 function addScenarioMessage(scenario, options = {}) {
   const interactive = options.interactive !== false;
+  const modeLabel = MODE_LABELS[options.mode] || MODE_LABELS[activeMode] || "Реализм";
   const article = document.createElement("article");
   article.className = "message assistant";
   article.dataset.id = crypto.randomUUID();
 
   const badge = document.createElement("div");
   badge.className = "badge";
-  badge.textContent = "ИИ";
+  badge.textContent = `ИИ — ${modeLabel}`;
   article.append(badge);
 
   const narrative = document.createElement("p");
