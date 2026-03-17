@@ -191,7 +191,9 @@ button:disabled {
 
 .chat-window-head {
   display: flex;
-  justify-content: flex-end;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 8px;
   margin-bottom: 10px;
 }
 
@@ -263,12 +265,6 @@ button:disabled {
 .mode-tab:disabled {
   opacity: 0.5;
   cursor: wait;
-}
-
-.mode-hint {
-  margin: 10px 0 0;
-  color: var(--muted);
-  font-size: 0.9rem;
 }
 
 .provider-row {

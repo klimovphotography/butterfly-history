@@ -7,7 +7,6 @@ const clearHistoryButton = document.getElementById("clear-history-btn");
 const randomButton = document.getElementById("random-btn");
 const providerPill = document.getElementById("provider-pill");
 const modeTabs = document.querySelectorAll(".mode-tab");
-const modeHint = document.getElementById("mode-hint");
 
 const HISTORY_KEY = "butterfly_history_v2";
 const HISTORY_LIMIT = 20;
@@ -63,14 +62,6 @@ const MODE_LABELS = {
   humor: "Юмор",
 };
 
-const MODE_HINTS = {
-  realism:
-    "Реализм строит сценарий с акцентом на историческую правдоподобность и факты.",
-  dark: "Мрачная хроника добавит тревожные темы и драматические последствия.",
-  prosperity: "Эпоха процветания рисует светлое, устойчивое будущее.",
-  madness: "Безумие делает текст странным, хаотичным и неожиданным.",
-  humor: "Юмор добавляет сарказм и лёгкую иронию к событиям.",
-};
 
 initModeTabs();
 
@@ -225,12 +216,6 @@ function setActiveMode(mode) {
     tab.classList.toggle("is-active", isActive);
     tab.setAttribute("aria-selected", isActive ? "true" : "false");
   }
-  updateModeHint(mode);
-}
-
-function updateModeHint(mode) {
-  if (!modeHint) return;
-  modeHint.textContent = MODE_HINTS[mode] || "Тон задаётся режимом — выберите, чтобы изменить атмосферу.";
 }
 
 async function loadProviderMeta() {
