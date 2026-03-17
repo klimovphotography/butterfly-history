@@ -736,6 +736,8 @@ button:disabled {
 
   .action-group {
     width: 100%;
+    flex-direction: column;
+    align-items: center;
   }
 
   .mode-tabs {
@@ -743,7 +745,11 @@ button:disabled {
     display: grid;
     grid-template-columns: 1fr;
     gap: 8px;
-    padding: 8px;
+    padding: 0;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    justify-items: stretch;
   }
 
   .mode-tab {
@@ -751,6 +757,11 @@ button:disabled {
     text-align: center;
     white-space: normal;
     line-height: 1.15;
+  }
+
+  .random-btn {
+    width: 100%;
+    max-width: 320px;
   }
 
   textarea,
