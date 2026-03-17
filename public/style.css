@@ -25,6 +25,11 @@ body {
     radial-gradient(circle at 82% 82%, #e4e4e4, transparent 36%),
     linear-gradient(160deg, var(--bg), var(--bg-soft));
   position: relative;
+  -webkit-text-size-adjust: 100%;
+}
+
+html {
+  touch-action: manipulation;
 }
 
 body::before {
@@ -253,6 +258,17 @@ button:disabled {
 .mode-tab:focus-visible {
   outline: none;
   box-shadow: 0 0 0 3px rgba(0, 0, 0, 0.12);
+}
+
+.mode-tab:disabled {
+  opacity: 0.5;
+  cursor: wait;
+}
+
+.mode-hint {
+  margin: 10px 0 0;
+  color: var(--muted);
+  font-size: 0.9rem;
 }
 
 .provider-row {
@@ -617,6 +633,10 @@ button:disabled {
   gap: 6px;
 }
 
+.donate-note + .donate-list {
+  margin-top: 10px;
+}
+
 .donate-list li::marker {
   color: #1d6f6a;
 }
@@ -724,12 +744,25 @@ button:disabled {
 
   .mode-tabs {
     width: 100%;
-    justify-content: flex-start;
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 8px;
+    padding: 8px;
   }
 
   .mode-tab {
-    flex: 1 1 140px;
+    width: 100%;
     text-align: center;
+    white-space: normal;
+    line-height: 1.15;
+  }
+
+  textarea,
+  button,
+  .mode-tab,
+  .random-btn,
+  #submit-btn {
+    font-size: 16px;
   }
 
   #submit-btn {
