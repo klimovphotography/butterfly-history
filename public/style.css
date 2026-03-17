@@ -577,6 +577,77 @@ button:disabled {
   background: var(--surface);
 }
 
+.donate-card {
+  margin-top: 16px;
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  padding: 18px 18px 16px;
+  background: linear-gradient(135deg, rgba(255, 255, 255, 0.85), rgba(234, 248, 246, 0.95));
+  display: grid;
+  gap: 14px;
+}
+
+.donate-eyebrow {
+  margin: 0 0 6px;
+  font-size: 0.72rem;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  font-weight: 700;
+  color: #1d6f6a;
+}
+
+.donate-card h2 {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+}
+
+.donate-note {
+  margin: 0;
+  color: var(--muted);
+  font-size: 0.92rem;
+  max-width: 520px;
+}
+
+.donate-list {
+  margin: 0;
+  padding-left: 18px;
+  color: #203a39;
+  font-size: 0.95rem;
+  display: grid;
+  gap: 6px;
+}
+
+.donate-list li::marker {
+  color: #1d6f6a;
+}
+
+.donate-list + .donate-note {
+  margin-top: 10px;
+}
+
+.donate-cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
+  border-radius: 999px;
+  padding: 12px 18px;
+  font: inherit;
+  font-weight: 700;
+  border: 1px solid #111111;
+  background: #111111;
+  color: #ffffff;
+  transition: transform 150ms ease, background 150ms ease, color 150ms ease;
+  width: fit-content;
+}
+
+.donate-cta:hover {
+  transform: translateY(-1px);
+  background: #7ce1d9;
+  color: #061413;
+  border-color: #7ce1d9;
+}
+
 .history-head {
   display: flex;
   gap: 10px;
@@ -642,6 +713,7 @@ button:disabled {
   }
 
   .chat-card,
+  .donate-card,
   .history-card {
     padding: 14px;
   }
