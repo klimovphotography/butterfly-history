@@ -16,24 +16,41 @@ const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
 
+const GROQ_API_KEY = process.env.GROQ_API_KEY;
+const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-70b-versatile";
+const GROQ_BASE_URL =
+  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
+
+const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
+const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemma-2-9b-it";
+const OPENROUTER_BASE_URL =
+  process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
+const OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || "";
+const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || "Butterfly History";
+
+const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
+const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
+const MISTRAL_BASE_URL =
+  process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1";
+
+const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY;
+const HUGGINGFACE_MODEL =
+  process.env.HUGGINGFACE_MODEL || "meta-llama/Meta-Llama-3-8B-Instruct";
+const HUGGINGFACE_BASE_URL =
+  process.env.HUGGINGFACE_BASE_URL || "https://api-inference.huggingface.co/v1";
+
 const AIPRODUCTIV_API_KEY = process.env.AIPRODUCTIV_API_KEY;
 const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
 const AIPRODUCTIV_BASE_URL =
   process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1";
 const SITE_URL = (process.env.SITE_URL || "").replace(/\/+$/, "");
 
+const FAILOVER_ORDER = (process.env.FAILOVER_ORDER || "")
+  .split(",")
+  .map((value) => value.trim())
+  .filter(Boolean);
 
 const MODEL_CATALOG = [
-  {
-    id: "aiproductiv-gpt-5.2",
-    label: "GPT-5.2",
-    provider: "AIPRODUCTIV",
-    providerLabel: "AIPRODUCTIV",
-    model: AIPRODUCTIV_MODEL,
-    baseUrl: AIPRODUCTIV_BASE_URL,
-    apiKey: AIPRODUCTIV_API_KEY,
-    enableImages: false,
-  },
   {
     id: "gemini-2.5-flash",
     label: "Gemini 2.5 Flash",
@@ -44,9 +61,67 @@ const MODEL_CATALOG = [
     apiKey: GEMINI_API_KEY,
     enableImages: GEMINI_ENABLE_IMAGES,
   },
+  {
+    id: "groq-llama-3.1-70b",
+    label: "Groq Llama 3.1 70B",
+    provider: "GROQ",
+    providerLabel: "GROQ",
+    model: GROQ_MODEL,
+    baseUrl: GROQ_BASE_URL,
+    apiKey: GROQ_API_KEY,
+    enableImages: false,
+  },
+  {
+    id: "openrouter-gemma-2-9b",
+    label: "OpenRouter Gemma 2 9B",
+    provider: "OPENROUTER",
+    providerLabel: "OPENROUTER",
+    model: OPENROUTER_MODEL,
+    baseUrl: OPENROUTER_BASE_URL,
+    apiKey: OPENROUTER_API_KEY,
+    enableImages: false,
+  },
+  {
+    id: "mistral-small",
+    label: "Mistral Small",
+    provider: "MISTRAL",
+    providerLabel: "MISTRAL",
+    model: MISTRAL_MODEL,
+    baseUrl: MISTRAL_BASE_URL,
+    apiKey: MISTRAL_API_KEY,
+    enableImages: false,
+  },
+  {
+    id: "huggingface-llama3-8b",
+    label: "Hugging Face Llama 3 8B",
+    provider: "HUGGINGFACE",
+    providerLabel: "HUGGINGFACE",
+    model: HUGGINGFACE_MODEL,
+    baseUrl: HUGGINGFACE_BASE_URL,
+    apiKey: HUGGINGFACE_API_KEY,
+    enableImages: false,
+  },
+  {
+    id: "aiproductiv-gpt-5.2",
+    label: "GPT-5.2",
+    provider: "AIPRODUCTIV",
+    providerLabel: "AIPRODUCTIV",
+    model: AIPRODUCTIV_MODEL,
+    baseUrl: AIPRODUCTIV_BASE_URL,
+    apiKey: AIPRODUCTIV_API_KEY,
+    enableImages: false,
+  },
 ];
 
-const UI_MODEL_IDS = ["aiproductiv-gpt-5.2"];
+const UI_MODEL_IDS = [
+  "gemini-2.5-flash",
+  "groq-llama-3.1-70b",
+  "openrouter-gemma-2-9b",
+  "mistral-small",
+  "huggingface-llama3-8b",
+  "aiproductiv-gpt-5.2",
+];
+const DEFAULT_FAILOVER_ORDER = [...UI_MODEL_IDS];
 
 function isModelEnabled(model) {
   if (!model?.apiKey) return false;
@@ -54,8 +129,13 @@ function isModelEnabled(model) {
 }
 
 function getDefaultModelId() {
-  if (AIPRODUCTIV_API_KEY) return "aiproductiv-gpt-5.2";
-  if (GEMINI_API_KEY) return "gemini-2.5-flash";
+  const ordered = getFailoverOrder();
+  for (const modelId of ordered) {
+    const model = getModelById(modelId);
+    if (model && isModelEnabled(model)) {
+      return modelId;
+    }
+  }
   return null;
 }
 
@@ -70,6 +150,70 @@ function getUiModels() {
     return uiModels;
   }
   return MODEL_CATALOG;
+}
+
+function getFailoverOrder() {
+  if (FAILOVER_ORDER.length > 0) {
+    return FAILOVER_ORDER;
+  }
+  return DEFAULT_FAILOVER_ORDER;
+}
+
+function hasAnyEnabledModels() {
+  return MODEL_CATALOG.some((model) => isModelEnabled(model));
+}
+
+function buildModelAttempts(requestedId) {
+  const attempts = [];
+  const seen = new Set();
+
+  const requested = getModelById(requestedId);
+  if (requested && isModelEnabled(requested)) {
+    attempts.push(requested);
+    seen.add(requested.id);
+  }
+
+  const ordered = getFailoverOrder();
+  for (const modelId of ordered) {
+    const model = getModelById(modelId);
+    if (!model || !isModelEnabled(model)) continue;
+    if (seen.has(model.id)) continue;
+    attempts.push(model);
+    seen.add(model.id);
+  }
+
+  if (attempts.length === 0) {
+    for (const model of MODEL_CATALOG) {
+      if (!isModelEnabled(model)) continue;
+      if (seen.has(model.id)) continue;
+      attempts.push(model);
+    }
+  }
+
+  return attempts;
+}
+
+function buildHeaders(modelConfig) {
+  const headers = {
+    "Content-Type": "application/json",
+    Authorization: `Bearer ${modelConfig.apiKey}`,
+  };
+
+  if (modelConfig.provider === "OPENROUTER") {
+    const referer = OPENROUTER_SITE_URL || SITE_URL;
+    if (referer) {
+      headers["HTTP-Referer"] = referer;
+    }
+    if (OPENROUTER_APP_NAME) {
+      headers["X-Title"] = OPENROUTER_APP_NAME;
+    }
+  }
+
+  return headers;
+}
+
+function isImagesEnabled() {
+  return Boolean(GEMINI_API_KEY) && GEMINI_ENABLE_IMAGES;
 }
 
 function pickModelConfig(requestedId) {
@@ -90,8 +234,9 @@ function pickModelConfig(requestedId) {
 function missingModelMessage(model) {
   if (!model) {
     return (
-      "Не найден API ключ. Добавьте AIPRODUCTIV_API_KEY или GEMINI_API_KEY " +
-      "в .env и перезапустите сервер."
+      "Не найден API ключ. Добавьте хотя бы один из ключей: " +
+      "GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, " +
+      "HUGGINGFACE_API_KEY или AIPRODUCTIV_API_KEY в .env и перезапустите сервер."
     );
   }
 
@@ -171,9 +316,8 @@ async function handleAltHistory(req, res) {
     return;
   }
 
-  const { model: modelConfig } = pickModelConfig(requestedModelId);
-  if (!modelConfig) {
-    const requestedModel = getModelById(requestedModelId);
+  const requestedModel = getModelById(requestedModelId);
+  if (!hasAnyEnabledModels()) {
     sendJson(res, 500, { error: missingModelMessage(requestedModel) });
     return;
   }
@@ -184,7 +328,7 @@ async function handleAltHistory(req, res) {
 
   try {
     const scenario = await generateScenario({
-      modelConfig,
+      requestedModelId,
       systemMessage,
       userPrompt,
       currentYear,
@@ -192,7 +336,7 @@ async function handleAltHistory(req, res) {
       temperature: modeConfig.temperature,
     });
 
-    if (modelConfig.enableImages && scenario.imagePrompts.length > 0) {
+    if (isImagesEnabled() && scenario.imagePrompts.length > 0) {
       scenario.images = await generateScenarioImages(scenario.imagePrompts);
     } else {
       scenario.images = [];
@@ -210,49 +354,78 @@ async function handleAltHistory(req, res) {
 }
 
 async function generateScenario({
-  modelConfig,
+  requestedModelId,
   systemMessage,
   userPrompt,
   currentYear,
   event,
   temperature,
 }) {
-  const baseUrl = modelConfig.baseUrl.replace(/\/+$/, "");
-  const headers = {
-    "Content-Type": "application/json",
-    Authorization: `Bearer ${modelConfig.apiKey}`,
-  };
-
-  const payload = {
-    model: modelConfig.model,
-    messages: [systemMessage, { role: "user", content: userPrompt }],
-    temperature: Number.isFinite(temperature) ? temperature : 0.6,
-  };
-
-  const { response, data } = await fetchJson(`${baseUrl}/chat/completions`, {
-    method: "POST",
-    headers,
-    body: JSON.stringify(payload),
-  });
-
-  if (!response.ok) {
-    const apiMessage =
-      data?.error?.message || "Ошибка при обращении к API модели.";
-    throw new Error(apiMessage);
+  const attempts = buildModelAttempts(requestedModelId);
+  if (attempts.length === 0) {
+    throw new Error(
+      "Не найден доступный провайдер. Проверьте ключи в .env."
+    );
   }
 
-  const modelText = extractTextFromChatCompletion(data);
-  if (!modelText) {
-    throw new Error("Модель вернула пустой ответ.");
+  const errors = [];
+  for (const attempt of attempts) {
+    try {
+      const baseUrl = attempt.baseUrl.replace(/\/+$/, "");
+      const headers = buildHeaders(attempt);
+      const payload = {
+        model: attempt.model,
+        messages: [systemMessage, { role: "user", content: userPrompt }],
+        temperature: Number.isFinite(temperature) ? temperature : 0.6,
+      };
+
+      const { response, data } = await fetchJson(
+        `${baseUrl}/chat/completions`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify(payload),
+        }
+      );
+
+      if (!response.ok) {
+        const apiMessage =
+          data?.error?.message ||
+          data?.message ||
+          "Ошибка при обращении к API модели.";
+        throw new Error(apiMessage);
+      }
+
+      const modelText = extractTextFromChatCompletion(data);
+      if (!modelText) {
+        throw new Error("Модель вернула пустой ответ.");
+      }
+
+      return parseScenarioResponse(modelText, currentYear, event);
+    } catch (error) {
+      const message =
+        error && typeof error.message === "string"
+          ? error.message
+          : "Неизвестная ошибка.";
+      errors.push(`${attempt.providerLabel}: ${message}`);
+      continue;
+    }
   }
 
-  return parseScenarioResponse(modelText, currentYear, event);
+  throw new Error(`Все провайдеры недоступны.\n${errors.join("\n")}`);
 }
 
 async function fetchJson(url, options) {
   const response = await fetch(url, options);
-  const data = await response.json();
-  return { response, data };
+  const text = await response.text();
+  if (!text) {
+    return { response, data: {} };
+  }
+  try {
+    return { response, data: JSON.parse(text) };
+  } catch {
+    return { response, data: { raw: text } };
+  }
 }
 
 

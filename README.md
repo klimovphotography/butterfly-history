@@ -5,9 +5,13 @@
 ## Что нужно
 
 - Установленный Node.js (версия 18+)
-- Один из API ключей:
+- Один или несколько API ключей (чем больше, тем надежнее failover):
   - `GEMINI_API_KEY` (Google AI Studio)
-  - `AIPRODUCTIV_API_KEY` (AIPRODUCTIV)
+  - `GROQ_API_KEY` (Groq)
+  - `OPENROUTER_API_KEY` (OpenRouter)
+  - `MISTRAL_API_KEY` (Mistral)
+  - `HUGGINGFACE_API_KEY` (Hugging Face)
+  - `AIPRODUCTIV_API_KEY` (опционально)
 
 ## Быстрый запуск
 
@@ -15,10 +19,14 @@
    ```bash
    cd "/Users/vasilijklimov/Documents/Codex project"
    ```
-2. В файле `.env` вставьте ваш ключ (или ключи):
+2. В файле `.env` вставьте ваши ключи (или ключи):
    ```env
    GEMINI_API_KEY=ваш_ключ
-   # или
+   GROQ_API_KEY=ваш_ключ
+   OPENROUTER_API_KEY=ваш_ключ
+   MISTRAL_API_KEY=ваш_ключ
+   HUGGINGFACE_API_KEY=ваш_ключ
+   # опционально
    AIPRODUCTIV_API_KEY=ваш_ключ
    ```
 4. Запустите сервер:
@@ -40,6 +48,11 @@
    - 2-3 кнопки `Что делаем дальше?` для продолжения ветки,
    - 1-2 иллюстрации альтернативного мира.
 5. Откройте старые сценарии в блоке `История запросов`.
+
+## Failover
+
+Если основной провайдер недоступен, сервер автоматически попробует следующий
+из списка. Порядок можно поменять через переменную `FAILOVER_ORDER` в `.env`.
 
 ## Файлы проекта
 
