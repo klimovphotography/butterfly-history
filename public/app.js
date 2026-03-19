@@ -538,10 +538,7 @@ function normalizeScenario(data) {
     return null;
   }
 
-  const narrative =
-    typeof raw.narrative === "string" && raw.narrative.trim()
-      ? raw.narrative.trim()
-      : "Гипотеза построена, но текстовое описание оказалось неполным.";
+  const narrative = sanitizeNarrativeText(raw.narrative);
 
   const timeline = normalizeTimeline(raw.timeline);
   const branches = normalizeBranches(raw.branches);
@@ -814,12 +811,14 @@ function parseYear(value) {
 }
 
 function buildFallbackScenario(text) {
+  const narrative = sanitizeNarrativeText(text);
+  const timeline = normalizeTimeline([]);
   return {
-    narrative: text.trim(),
-    timeline: normalizeTimeline([]),
+    narrative,
+    timeline,
     branches: normalizeBranches([]),
     images: [],
-    shareCard: normalizeShareCard(null, text.trim(), normalizeTimeline([])),
+    shareCard: normalizeShareCard(null, narrative, timeline),
   };
 }
 
@@ -929,8 +928,119 @@ function readHistory() {
           item?.scenario &&
           typeof item.scenario === "object"
       )
+      .map((item) => ({
+        ...item,
+        scenario: normalizeStoredScenario(item.scenario),
+      }))
       .slice(0, HISTORY_LIMIT);
   } catch {
     return [];
   }
+}
+
+function normalizeStoredScenario(scenario) {
+  const narrative = sanitizeNarrativeText(scenario?.narrative);
+  const timeline = normalizeTimeline(scenario?.timeline);
+  const branches = normalizeBranches(scenario?.branches);
+  const images = normalizeImages(scenario?.images);
+  const shareCard = normalizeShareCard(scenario?.shareCard, narrative, timeline);
+
+  return {
+    narrative,
+    timeline,
+    branches,
+    images,
+    shareCard,
+  };
+}
+
+function sanitizeNarrativeText(value) {
+  const raw = stripCodeFences(String(value || ""));
+  if (!raw) {
+    return "Гипотеза построена, но текстовое описание оказалось неполным.";
+  }
+
+  const parsed = parseStructuredNarrative(raw);
+  if (parsed) {
+    return sanitizeNarrativeText(parsed);
+  }
+
+  if (looksLikeStructuredPayload(raw)) {
+    return "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.";
+  }
+
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+function parseStructuredNarrative(text) {
+  const direct = tryParseJson(text);
+  if (typeof direct?.narrative === "string" && direct.narrative.trim()) {
+    return direct.narrative.trim();
+  }
+
+  const normalized = String(text || "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+  const embedded = tryParseJson(extractJsonSlice(normalized));
+  if (typeof embedded?.narrative === "string" && embedded.narrative.trim()) {
+    return embedded.narrative.trim();
+  }
+
+  const regexMatch = normalized.match(
+    /"narrative"\s*:\s*"([\s\S]*?)"\s*,\s*"timeline"\s*:/i
+  );
+  if (!regexMatch?.[1]) {
+    return "";
+  }
+
+  return regexMatch[1]
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, " ")
+    .replace(/\\r/g, " ")
+    .replace(/\\\\/g, "\\")
+    .trim();
+}
+
+function tryParseJson(text) {
+  const value = String(text || "").trim();
+  if (!value) return null;
+  try {
+    return JSON.parse(value);
+  } catch {
+    return null;
+  }
+}
+
+function extractJsonSlice(text) {
+  const value = String(text || "");
+  const start = value.indexOf("{");
+  const end = value.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) {
+    return "";
+  }
+  return value.slice(start, end + 1);
+}
+
+function stripCodeFences(text) {
+  return String(text || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function looksLikeStructuredPayload(text) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return false;
+  const markers = [
+    '"narrative"',
+    '"timeline"',
+    '"branches"',
+    '"share_card"',
+    "“narrative”",
+    "“timeline”",
+    "“branches”",
+    "“share_card”",
+  ];
+  const matched = markers.filter((marker) => value.includes(marker)).length;
+  return matched >= 2;
 }

@@ -616,7 +616,9 @@ function buildSystemMessage(modeId, currentYear) {
 
 function parseScenarioResponse(modelText, currentYear, event) {
   const parsed = parseJsonFromModelText(modelText);
-  const narrative = pickString(parsed?.narrative) || modelText.trim();
+  const narrative = sanitizeNarrative(
+    pickString(parsed?.narrative) || modelText.trim()
+  );
   const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative);
   const branches = normalizeBranches(parsed?.branches);
   const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative);
@@ -663,6 +665,74 @@ function parseJsonFromModelText(text) {
       return null;
     }
   }
+}
+
+function sanitizeNarrative(value) {
+  const raw = stripCodeFences(String(value || ""));
+  if (!raw) {
+    return "Гипотеза построена, но текстовое описание оказалось неполным.";
+  }
+
+  const parsed = parseJsonFromModelText(raw);
+  const parsedNarrative = pickString(parsed?.narrative);
+  if (parsedNarrative) {
+    return sanitizeNarrative(parsedNarrative);
+  }
+
+  const extractedNarrative = extractNarrativeField(raw);
+  if (extractedNarrative) {
+    return sanitizeNarrative(extractedNarrative);
+  }
+
+  if (looksLikeStructuredPayload(raw)) {
+    return "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.";
+  }
+
+  return raw.replace(/\s+/g, " ").trim();
+}
+
+function stripCodeFences(text) {
+  return String(text || "")
+    .replace(/^```(?:json)?\s*/i, "")
+    .replace(/\s*```$/i, "")
+    .trim();
+}
+
+function extractNarrativeField(text) {
+  const normalized = String(text || "")
+    .replace(/[“”]/g, '"')
+    .replace(/[‘’]/g, "'");
+  const match = normalized.match(
+    /"narrative"\s*:\s*"([\s\S]*?)"\s*,\s*"timeline"\s*:/i
+  );
+
+  if (!match?.[1]) {
+    return "";
+  }
+
+  return match[1]
+    .replace(/\\"/g, '"')
+    .replace(/\\n/g, " ")
+    .replace(/\\r/g, " ")
+    .replace(/\\\\/g, "\\")
+    .trim();
+}
+
+function looksLikeStructuredPayload(text) {
+  const value = String(text || "").toLowerCase();
+  if (!value) return false;
+  const markers = [
+    '"narrative"',
+    '"timeline"',
+    '"branches"',
+    '"share_card"',
+    "“narrative”",
+    "“timeline”",
+    "“branches”",
+    "“share_card”",
+  ];
+  const matched = markers.filter((marker) => value.includes(marker)).length;
+  return matched >= 2;
 }
 
 function normalizeTimeline(rawTimeline, currentYear, narrative) {
