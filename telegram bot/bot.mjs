@@ -293,13 +293,17 @@ async function sendScenario(chatId, scenario, meta) {
 
   if (Array.isArray(scenario.images) && scenario.images.length > 0) {
     for (const [index, image] of scenario.images.entries()) {
-      await sendChatAction(chatId, "upload_photo");
-      await sendPhoto(chatId, image.src, {
-        caption:
-          index === 0
-            ? "Иллюстрация альтернативного мира"
-            : "Еще одна иллюстрация этой ветки",
-      });
+      try {
+        await sendChatAction(chatId, "upload_photo");
+        await sendPhoto(chatId, image.src, {
+          caption:
+            index === 0
+              ? "Иллюстрация альтернативного мира"
+              : "Еще одна иллюстрация этой ветки",
+        });
+      } catch (error) {
+        console.warn("Image send skipped:", error?.message || error);
+      }
     }
   }
 }
@@ -586,7 +590,7 @@ function splitMessage(text, maxLength) {
 }
 
 function decodeDataImage(dataUrl) {
-  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+);base64,(.+)$/);
+  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+)(?:;charset=[^;,]+)?;base64,(.+)$/);
   if (!match) {
     throw new Error("Некорректный data URL картинки.");
   }
