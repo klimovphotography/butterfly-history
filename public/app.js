@@ -48,6 +48,7 @@ const QUICK_START_EXAMPLES = [
 
 let isLoading = false;
 let activeMode = "realism";
+const shareUrlCache = new Map();
 const MODE_LABELS = {
   realism: "Реализм",
   dark: "Мрачная хроника",
@@ -71,7 +72,7 @@ const CARD_CAPTURE_SIZES = {
 initModeTabs();
 
 loadProviderMeta();
-hydrateScenarioFromUrl();
+void hydrateScenarioFromUrl();
 
 input.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey) return;
@@ -224,7 +225,7 @@ function addScenarioMessage(scenario, options = {}) {
       buildShareCard(sharePayload)
     );
     if (options.interactive !== false) {
-      syncScenarioHash(sharePayload);
+      void syncScenarioHash(sharePayload);
     }
   } else {
     const badge = document.createElement("div");
@@ -293,15 +294,6 @@ function buildShareCard(payload) {
     formatGroup.append(formatButton);
   }
 
-  const copyButton = document.createElement("button");
-  copyButton.type = "button";
-  copyButton.className = "share-card-control";
-  copyButton.textContent = "Копировать текст";
-  copyButton.addEventListener("click", async () => {
-    const success = await copyTextToClipboard(buildShareCardText(payload));
-    setTemporaryButtonLabel(copyButton, success ? "Скопировано" : "Не вышло");
-  });
-
   const shareButton = document.createElement("button");
   shareButton.type = "button";
   shareButton.className = "share-card-control";
@@ -330,7 +322,7 @@ function buildShareCard(payload) {
     setTemporaryButtonLabel(openButton, opened ? "Готово" : "Не вышло");
   });
 
-  actionGroup.append(copyButton, shareButton, openButton);
+  actionGroup.append(shareButton, openButton);
   toolbar.append(formatGroup, actionGroup);
   wrapper.append(toolbar, frameStage);
   renderFrame();
@@ -523,6 +515,40 @@ function getShareUrl(payload) {
   return withScenarioQuery(current || "https://butterfly-history.ru/");
 }
 
+async function resolveShareUrl(payload) {
+  const scenario = buildScenarioHash(payload);
+  if (!scenario) {
+    return getShareUrl(payload);
+  }
+
+  const cached = shareUrlCache.get(scenario);
+  if (cached) {
+    return cached;
+  }
+
+  try {
+    const response = await fetch("/api/share-link", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ scenario }),
+    });
+    if (response.ok) {
+      const data = await response.json();
+      const url = String(data?.url || "").trim();
+      if (url) {
+        shareUrlCache.set(scenario, url);
+        return url;
+      }
+    }
+  } catch {
+    // fallback below
+  }
+
+  const fallback = getShareUrl(payload);
+  shareUrlCache.set(scenario, fallback);
+  return fallback;
+}
+
 function extractLeadSentence(narrative) {
   const text = String(narrative || "").replace(/\s+/g, " ").trim();
   if (!text) return "";
@@ -565,19 +591,23 @@ function parseScenarioHash(hash) {
   }
 }
 
-function syncScenarioHash(payload) {
+async function syncScenarioHash(payload) {
   if (!window.history?.replaceState) return;
-  const hash = buildScenarioHash(payload);
-  if (!hash) return;
-  const url = new URL(window.location.href);
-  url.searchParams.set("scenario", hash);
-  url.hash = "";
-  window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+  const shortUrl = await resolveShareUrl(payload);
+  if (!shortUrl) return;
+  const parsed = new URL(shortUrl, window.location.origin);
+  window.history.replaceState(null, "", `${parsed.pathname}${parsed.search}`);
 }
 
-function hydrateScenarioFromUrl() {
+async function hydrateScenarioFromUrl() {
   const url = new URL(window.location.href);
   let encoded = String(url.searchParams.get("scenario") || "").trim();
+  if (!encoded) {
+    const shortId = String(url.searchParams.get("s") || "").trim();
+    if (shortId) {
+      encoded = await fetchScenarioByShortId(shortId);
+    }
+  }
   if (!encoded) {
     const legacyHash = String(window.location.hash || "");
     if (legacyHash.startsWith("#scenario=")) {
@@ -625,6 +655,20 @@ function hydrateScenarioFromUrl() {
     },
     { interactive: false, mode: modeId }
   );
+}
+
+async function fetchScenarioByShortId(shortId) {
+  const id = String(shortId || "").trim();
+  if (!id) return "";
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return "";
+  try {
+    const response = await fetch(`/api/share-link/${encodeURIComponent(id)}`);
+    if (!response.ok) return "";
+    const data = await response.json();
+    return String(data?.scenario || "").trim();
+  } catch {
+    return "";
+  }
 }
 
 async function copyTextToClipboard(text) {
@@ -731,7 +775,7 @@ async function openShareCardImage(target, card, format) {
 }
 
 async function shareScenarioCard(target, payload, format) {
-  const shareUrl = getShareUrl(payload);
+  const shareUrl = await resolveShareUrl(payload);
   const teaser = buildShareTeaser(payload);
 
   if (typeof navigator.share !== "function") {

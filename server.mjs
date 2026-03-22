@@ -2,6 +2,7 @@ import fs from "node:fs";
 import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
+import crypto from "node:crypto";
 import { fileURLToPath } from "node:url";
 import { Resvg } from "@resvg/resvg-js";
 
@@ -247,6 +248,8 @@ function missingModelMessage(model) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
+const SHARE_LINKS_DIR = path.join(__dirname, "data");
+const SHARE_LINKS_FILE = path.join(SHARE_LINKS_DIR, "share-links.json");
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -272,6 +275,15 @@ const server = http.createServer(async (req, res) => {
 
     if (req.method === "POST" && url.pathname === "/api/alt-history") {
       await handleAltHistory(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/share-link") {
+      await handleCreateShareLink(req, res);
+      return;
+    }
+    if (req.method === "GET" && url.pathname.startsWith("/api/share-link/")) {
+      const shortId = url.pathname.slice("/api/share-link/".length);
+      await handleGetShareLink(req, res, shortId);
       return;
     }
 
@@ -370,6 +382,53 @@ async function handleAltHistory(req, res) {
         : "Не удалось получить ответ от API модели.";
     sendJson(res, 500, { error: message });
   }
+}
+
+async function handleCreateShareLink(req, res) {
+  const body = await readJsonBody(req);
+  const scenario = String(body?.scenario || "").trim();
+  if (!scenario) {
+    sendJson(res, 400, { error: "Пустой сценарий для короткой ссылки." });
+    return;
+  }
+
+  const parsed = decodeScenarioPayload(scenario);
+  if (!parsed) {
+    sendJson(res, 400, { error: "Некорректные данные сценария." });
+    return;
+  }
+
+  const store = await readShareLinks();
+  const existingId = findExistingShareId(store, scenario);
+  const id = existingId || generateShortShareId(store);
+
+  if (!existingId) {
+    store[id] = {
+      scenario,
+      createdAt: new Date().toISOString(),
+    };
+    await writeShareLinks(store);
+  }
+
+  sendJson(res, 200, {
+    id,
+    url: `${getSiteUrl(req)}/?s=${encodeURIComponent(id)}`,
+  });
+}
+
+async function handleGetShareLink(req, res, rawId) {
+  const id = normalizeShortId(rawId);
+  if (!id) {
+    sendJson(res, 400, { error: "Некорректный id короткой ссылки." });
+    return;
+  }
+  const store = await readShareLinks();
+  const entry = store[id];
+  if (!entry?.scenario) {
+    sendJson(res, 404, { error: "Короткая ссылка не найдена." });
+    return;
+  }
+  sendJson(res, 200, { id, scenario: entry.scenario });
 }
 
 async function generateScenario({
@@ -1294,7 +1353,14 @@ async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butte
   try {
     const filePath = path.join(PUBLIC_DIR, "index.html");
     const rawHtml = await fsp.readFile(filePath, "utf-8");
-    const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
+    let scenarioParam = String(url.searchParams.get("scenario") || "").trim();
+    if (!scenarioParam) {
+      const shortId = normalizeShortId(url.searchParams.get("s"));
+      if (shortId) {
+        const store = await readShareLinks();
+        scenarioParam = String(store[shortId]?.scenario || "").trim();
+      }
+    }
     const injected = injectScenarioMeta(rawHtml, scenarioParam, siteUrl);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     if (method === "HEAD") {
@@ -1465,6 +1531,51 @@ function renderSvgLines(lines, x, startY, fontSize, lineHeight, color, weight) {
         `<text x="${x}" y="${startY + index * lineHeight}" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="${fontSize}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`
     )
     .join("\n  ");
+}
+
+async function readShareLinks() {
+  try {
+    const raw = await fsp.readFile(SHARE_LINKS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return {};
+    return parsed;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return {};
+    }
+    throw error;
+  }
+}
+
+async function writeShareLinks(store) {
+  await fsp.mkdir(SHARE_LINKS_DIR, { recursive: true });
+  const tempPath = `${SHARE_LINKS_FILE}.tmp`;
+  await fsp.writeFile(tempPath, JSON.stringify(store), "utf-8");
+  await fsp.rename(tempPath, SHARE_LINKS_FILE);
+}
+
+function findExistingShareId(store, scenario) {
+  for (const [id, entry] of Object.entries(store || {})) {
+    if (entry?.scenario === scenario) {
+      return id;
+    }
+  }
+  return "";
+}
+
+function generateShortShareId(store) {
+  let id = "";
+  do {
+    id = crypto.randomBytes(5).toString("base64url");
+  } while (store[id]);
+  return id;
+}
+
+function normalizeShortId(value) {
+  const id = String(value || "").trim();
+  if (!id) return "";
+  if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return "";
+  return id;
 }
 
 function decodeScenarioPayload(encoded) {
