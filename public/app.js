@@ -297,24 +297,6 @@ function buildShareCard(payload) {
     formatGroup.append(formatButton);
   }
 
-  const shareButton = document.createElement("button");
-  shareButton.type = "button";
-  shareButton.className = "share-card-control";
-  shareButton.textContent = "Поделиться";
-  shareButton.addEventListener("click", async () => {
-    const format = frame.dataset.format || resolveCardFormat(selectedFormat);
-    const shared = await shareScenarioCard(frame, payload, format);
-    if (shared === "native") {
-      setTemporaryButtonLabel(shareButton, "Отправлено");
-      return;
-    }
-    if (shared === "copied") {
-      setTemporaryButtonLabel(shareButton, "Ссылка скопирована");
-      return;
-    }
-    setTemporaryButtonLabel(shareButton, "Не вышло");
-  });
-
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = "share-card-control share-card-download";
@@ -325,7 +307,7 @@ function buildShareCard(payload) {
     setTemporaryButtonLabel(openButton, opened ? "Готово" : "Не вышло");
   });
 
-  actionGroup.append(shareButton, openButton);
+  actionGroup.append(openButton);
   toolbar.append(formatGroup, actionGroup);
   wrapper.append(toolbar, frameStage);
   renderFrame();
