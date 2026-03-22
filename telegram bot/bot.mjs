@@ -2,6 +2,7 @@ import fs from "node:fs/promises";
 import path from "node:path";
 import { Buffer } from "node:buffer";
 import { fileURLToPath } from "node:url";
+import { Resvg } from "@resvg/resvg-js";
 import {
   buildAltHistoryScenario,
   getAvailableModes,
@@ -283,20 +284,11 @@ async function generateAndSendScenario(chatId, payload) {
 }
 
 async function sendScenario(chatId, scenario, meta) {
-  const header = [
-    `Режим: ${getModeLabel(scenario.mode)}`,
-    meta?.provider ? `Провайдер: ${meta.provider}` : "",
-    meta?.model ? `Модель: ${meta.model}` : "",
-    "",
-    `Событие: ${scenario.event}`,
-    "",
-    scenario.narrative,
-  ]
-    .filter(Boolean)
-    .join("\n");
+  const cardSent = await sendScenarioCard(chatId, scenario, meta);
+  if (!cardSent) {
+    throw new Error("Не удалось собрать карточку сценария.");
+  }
 
-  await sendMessage(chatId, header);
-  await sendMessage(chatId, formatTimeline(scenario.timeline));
   await sendBranchPicker(chatId, scenario.branches);
 
   if (Array.isArray(scenario.images) && scenario.images.length > 0) {
@@ -390,18 +382,6 @@ async function sendBranchPicker(chatId, branches) {
       inline_keyboard: keyboard,
     },
   });
-}
-
-function formatTimeline(timeline) {
-  const lines = ["Таймлайн:"];
-
-  for (const point of timeline || []) {
-    lines.push(`• ${point.year} — ${point.title}`);
-    lines.push(point.details || "Ключевой поворот истории.");
-    lines.push("");
-  }
-
-  return lines.join("\n").trim();
 }
 
 function scenarioToContextEntry(scenario) {
@@ -519,6 +499,37 @@ async function sendPhoto(chatId, source, options = {}) {
   });
 }
 
+async function sendScenarioCard(chatId, scenario, meta) {
+  try {
+    const pngBuffer = renderScenarioCardPng(scenario);
+    const form = new FormData();
+    form.set("chat_id", String(chatId));
+    form.set(
+      "photo",
+      new Blob([pngBuffer], { type: "image/png" }),
+      "scenario-card.png"
+    );
+
+    const caption = [
+      `Режим: ${getModeLabel(scenario.mode)}`,
+      meta?.provider ? `Провайдер: ${meta.provider}` : "",
+      meta?.model ? `Модель: ${meta.model}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n");
+
+    if (caption) {
+      form.set("caption", shorten(caption, 1000));
+    }
+
+    await telegramCall("sendPhoto", form);
+    return true;
+  } catch (error) {
+    console.error("Card render error:", error?.message || error);
+    return false;
+  }
+}
+
 async function sendChatAction(chatId, action) {
   try {
     await telegramCall("sendChatAction", {
@@ -601,4 +612,227 @@ function shorten(value, maxLength) {
 
 function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function renderScenarioCardPng(scenario) {
+  const svg = buildScenarioCardSvg(scenario);
+  const resvg = new Resvg(svg, {
+    fitTo: {
+      mode: "width",
+      value: 1080,
+    },
+  });
+  return resvg.render().asPng();
+}
+
+function buildScenarioCardSvg(scenario) {
+  const card = scenario?.shareCard || {};
+  const footer = parseShareCardFooter(card.footer);
+  const modeLabel = getModeLabel(scenario?.mode);
+  const titleLines = wrapText(card.title || scenario?.event || "Что если?", 24, 4);
+  const subtitleLines = wrapText(
+    card.subtitle || "Альтернативная история, которой хочется поделиться",
+    34,
+    3
+  );
+  const storyParagraphs = buildStoryParagraphs(scenario?.narrative || "");
+
+  const titleBlock = renderSvgLines(
+    titleLines,
+    84,
+    288,
+    70,
+    78,
+    "#f5fbfb",
+    800
+  );
+
+  const subtitleStartY = 288 + titleLines.length * 78 + 36;
+  const subtitleBlock = renderSvgLines(
+    subtitleLines,
+    84,
+    subtitleStartY,
+    34,
+    42,
+    "rgba(235,245,245,0.92)",
+    600
+  );
+
+  const storyStartY = subtitleStartY + subtitleLines.length * 42 + 76;
+  const storyBlock = renderNarrativeParagraphs(storyParagraphs, storyStartY);
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#081515" />
+      <stop offset="45%" stop-color="#0f2422" />
+      <stop offset="100%" stop-color="#171717" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.85" cy="0.1" r="0.8">
+      <stop offset="0%" stop-color="rgba(124,225,217,0.34)" />
+      <stop offset="100%" stop-color="rgba(124,225,217,0)" />
+    </radialGradient>
+    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="rgba(9,13,13,0.55)" />
+      <stop offset="100%" stop-color="rgba(7,7,7,0.78)" />
+    </linearGradient>
+  </defs>
+  <rect width="1080" height="1920" fill="url(#bg)" />
+  <rect width="1080" height="1920" fill="url(#glow)" />
+  <rect x="42" y="42" width="996" height="1836" rx="34" fill="url(#panel)" stroke="rgba(124,225,217,0.28)" stroke-width="2" />
+  <text x="84" y="116" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="28" fill="#7ce1d9" letter-spacing="2">ЧТО ЕСЛИ?</text>
+  <rect x="768" y="76" width="230" height="54" rx="27" fill="rgba(124,225,217,0.14)" stroke="rgba(124,225,217,0.28)" />
+  <text x="883" y="111" text-anchor="middle" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="26" font-weight="700" fill="#d7f6f3">${escapeXml(modeLabel)}</text>
+  ${titleBlock}
+  ${subtitleBlock}
+  ${storyBlock}
+  <rect x="84" y="1712" width="912" height="124" rx="28" fill="rgba(124,225,217,0.10)" stroke="rgba(124,225,217,0.22)" />
+  <text x="132" y="1765" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="30" font-weight="700" fill="#f1fbfb">${escapeXml(footer.domain)}</text>
+  <text x="132" y="1808" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24" fill="rgba(235,245,245,0.82)">${escapeXml(footer.cta)}</text>
+</svg>`;
+}
+
+function buildStoryParagraphs(narrative) {
+  const text = String(narrative || "").replace(/\r/g, "").trim();
+  if (!text) {
+    return ["Гипотеза готова, но текст оказался пустым."];
+  }
+
+  const normalized = text.replace(/[ \t]+/g, " ");
+  const explicitParagraphs = normalized
+    .split(/\n{2,}/)
+    .map((block) => block.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (explicitParagraphs.length > 0) {
+    return explicitParagraphs.slice(0, 4);
+  }
+
+  const sentences = normalized
+    .match(/[^.!?]+[.!?…]?/g)
+    ?.map((sentence) => sentence.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+
+  if (!sentences || sentences.length <= 1) {
+    return [normalized];
+  }
+
+  const paragraphs = [];
+  for (let index = 0; index < sentences.length; index += 2) {
+    const paragraph = sentences.slice(index, index + 2).join(" ").trim();
+    if (paragraph) {
+      paragraphs.push(paragraph);
+    }
+    if (paragraphs.length >= 4) {
+      break;
+    }
+  }
+
+  return paragraphs;
+}
+
+function renderNarrativeParagraphs(paragraphs, startY) {
+  const blocks = [];
+  let currentY = startY;
+
+  for (const paragraph of paragraphs) {
+    const lines = wrapText(paragraph, 50, 6);
+    blocks.push(
+      renderSvgLines(lines, 84, currentY, 30, 40, "rgba(245,251,251,0.92)", 500)
+    );
+    currentY += lines.length * 40 + 34;
+    if (currentY > 1640) {
+      break;
+    }
+  }
+
+  return blocks.join("\n  ");
+}
+
+function parseShareCardFooter(value) {
+  const defaultDomain = "butterfly-history.ru";
+  const defaultCta = "смоделировать свою ветку реальности";
+  const raw = String(value || "").trim();
+
+  if (!raw) {
+    return { domain: defaultDomain, cta: defaultCta };
+  }
+
+  if (raw.includes("\n")) {
+    const parts = raw
+      .split("\n")
+      .map((item) => String(item || "").trim())
+      .filter(Boolean);
+    return {
+      domain: parts[0] || defaultDomain,
+      cta: parts[1] || defaultCta,
+    };
+  }
+
+  return {
+    domain: raw,
+    cta: defaultCta,
+  };
+}
+
+function wrapText(value, maxChars, maxLines) {
+  const text = String(value || "").replace(/\s+/g, " ").trim();
+  if (!text) return [];
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) {
+      current = next;
+      continue;
+    }
+
+    if (current) {
+      lines.push(current);
+    } else {
+      lines.push(word.slice(0, maxChars));
+    }
+
+    current = word;
+    if (lines.length >= maxLines - 1) {
+      break;
+    }
+  }
+
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  }
+
+  if (lines.length === maxLines) {
+    const joined = lines.join(" ");
+    if (joined.length < text.length && !lines[maxLines - 1].endsWith("…")) {
+      lines[maxLines - 1] = shorten(lines[maxLines - 1], Math.max(8, maxChars - 1));
+      if (!lines[maxLines - 1].endsWith("…")) {
+        lines[maxLines - 1] = `${lines[maxLines - 1]}…`;
+      }
+    }
+  }
+
+  return lines.slice(0, maxLines);
+}
+
+function renderSvgLines(lines, x, startY, fontSize, lineHeight, color, weight) {
+  return lines
+    .map(
+      (line, index) =>
+        `<text x="${x}" y="${startY + index * lineHeight}" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="${fontSize}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`
+    )
+    .join("\n  ");
+}
+
+function escapeXml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll("\"", "&quot;")
+    .replaceAll("'", "&apos;");
 }
