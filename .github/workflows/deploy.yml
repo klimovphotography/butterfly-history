@@ -20,7 +20,10 @@ jobs:
             git fetch origin main
             git reset --hard origin/main
             npm install
-            pm2 restart butterfly --update-env
+            test -f .env || { echo "Missing /root/butterfly/.env"; exit 1; }
+            test -f "/root/butterfly/telegram bot/.env" || { echo "Missing /root/butterfly/telegram bot/.env"; exit 1; }
+            pm2 startOrReload ecosystem.config.cjs --update-env
+            pm2 save
       - name: Notify Telegram
         if: always()
         run: |
