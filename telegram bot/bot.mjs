@@ -305,14 +305,9 @@ async function sendScenario(chatId, scenario, meta) {
 }
 
 async function sendWelcome(chatId, currentMode) {
-  const meta = getDefaultModelMeta();
   const lines = [
     "Я бот сайта «Эффект Бабочки».",
     "Просто отправьте вопрос в формате: Что если ...?",
-    "",
-    `Текущий режим: ${getModeLabel(currentMode)}`,
-    meta.provider ? `Сейчас по умолчанию доступен провайдер: ${meta.provider}` : "",
-    meta.model ? `Модель: ${meta.model}` : "",
     "",
     "Команды:",
     "/mode - выбрать стиль ответа",
