@@ -784,25 +784,6 @@ async function shareScenarioCard(target, payload, format) {
   }
 
   try {
-    const asset = await renderShareCardAsset(target, format);
-    if (asset?.blob) {
-      const file = new File([asset.blob], buildShareCardFilename(payload.card, format), {
-        type: "image/png",
-      });
-      if (
-        typeof navigator.canShare === "function" &&
-        navigator.canShare({ files: [file] })
-      ) {
-        await navigator.share({
-          title: payload.card.title,
-          text: teaser,
-          url: shareUrl,
-          files: [file],
-        });
-        return "native";
-      }
-    }
-
     await navigator.share({
       title: payload.card.title,
       text: teaser,
