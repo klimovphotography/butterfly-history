@@ -581,14 +581,6 @@ button:disabled {
   border-color: #7ce1d9;
 }
 
-.history-card {
-  margin-top: 16px;
-  border: 1px solid var(--line);
-  border-radius: 22px;
-  padding: 16px;
-  background: var(--surface);
-}
-
 .donate-card {
   margin-top: 16px;
   border: 1px solid var(--line);
@@ -664,59 +656,6 @@ button:disabled {
   border-color: #7ce1d9;
 }
 
-.history-head {
-  display: flex;
-  gap: 10px;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.history-head h2 {
-  margin: 0;
-  font-size: 1.15rem;
-}
-
-.history-list {
-  display: grid;
-  gap: 10px;
-}
-
-.history-item {
-  border: 1px solid var(--line);
-  border-radius: 14px;
-  padding: 12px;
-  background: #ffffff;
-}
-
-.history-item h3 {
-  margin: 0 0 6px;
-  font-size: 1rem;
-}
-
-.history-meta {
-  margin: 0;
-  font-size: 0.8rem;
-  color: var(--muted);
-}
-
-.history-preview {
-  margin: 8px 0;
-  color: #2a2a2a;
-  font-size: 0.93rem;
-}
-
-.history-actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.history-empty {
-  margin: 0;
-  color: var(--muted);
-}
-
 .note {
   margin: 14px 2px 0;
   font-size: 0.88rem;
@@ -729,8 +668,7 @@ button:disabled {
   }
 
   .chat-card,
-  .donate-card,
-  .history-card {
+  .donate-card {
     padding: 14px;
   }
 
@@ -776,8 +714,6 @@ button:disabled {
     width: 100%;
   }
 
-  .history-actions .ghost-btn,
-  .history-head .ghost-btn,
   .branch-btn {
     width: 100%;
   }

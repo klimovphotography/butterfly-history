@@ -2,14 +2,10 @@ const form = document.getElementById("event-form");
 const input = document.getElementById("event-input");
 const button = document.getElementById("submit-btn");
 const messages = document.getElementById("messages");
-const historyList = document.getElementById("history-list");
-const clearHistoryButton = document.getElementById("clear-history-btn");
 const randomButton = document.getElementById("random-btn");
 const providerPill = document.getElementById("provider-pill");
 const modeTabs = document.querySelectorAll(".mode-tab");
 
-const HISTORY_KEY = "butterfly_history_v2";
-const HISTORY_LIMIT = 20;
 const CURRENT_YEAR = new Date().getFullYear();
 const QUICK_START_EXAMPLES = [
   "Что если Атлантида не затонула а превратилась в технологическую сверхдержаву?",
@@ -50,7 +46,6 @@ const QUICK_START_EXAMPLES = [
   "Что если Смутное время на Руси закончилось полным вхождением страны в состав Речи Посполитой?",
 ];
 
-let history = readHistory();
 let activeScenario = null;
 let isLoading = false;
 let activeMode = "realism";
@@ -65,7 +60,6 @@ const MODE_LABELS = {
 
 initModeTabs();
 
-renderHistory();
 loadProviderMeta();
 
 input.addEventListener("keydown", (event) => {
@@ -81,12 +75,6 @@ input.addEventListener("keydown", (event) => {
 form.addEventListener("submit", async (event) => {
   event.preventDefault();
   await startScenario(input.value);
-});
-
-clearHistoryButton.addEventListener("click", () => {
-  history = [];
-  saveHistory(history);
-  renderHistory();
 });
 
 if (randomButton) {
@@ -173,13 +161,6 @@ async function requestScenario(payload) {
     }
 
     addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
-    pushHistory({
-      event: payload.branch ? `${payload.event} -> ${payload.branch}` : payload.event,
-      rootEvent: payload.event,
-      branch: payload.branch || "",
-      scenario: toHistoryScenario(scenario),
-      createdAt: new Date().toISOString(),
-    });
   } catch {
     removeMessage(loadingId);
     addTextMessage("assistant", "Ошибка сети. Проверьте, что сервер запущен.");
@@ -822,136 +803,10 @@ function buildFallbackScenario(text) {
   };
 }
 
-function pushHistory(entry) {
-  history = [entry, ...history].slice(0, HISTORY_LIMIT);
-  saveHistory(history);
-  renderHistory();
-}
-
-function toHistoryScenario(scenario) {
-  return {
-    narrative: scenario.narrative,
-    timeline: scenario.timeline,
-    branches: scenario.branches,
-    images: scenario.images
-      .filter((image) => image.src.startsWith("http://") || image.src.startsWith("https://"))
-      .slice(0, 2),
-    shareCard: scenario.shareCard,
-  };
-}
-
-function renderHistory() {
-  historyList.innerHTML = "";
-
-  if (history.length === 0) {
-    const empty = document.createElement("p");
-    empty.className = "history-empty";
-    empty.textContent = "Пока пусто. Первый сценарий появится здесь.";
-    historyList.append(empty);
-    return;
-  }
-
-  for (const item of history) {
-    const card = document.createElement("article");
-    card.className = "history-item";
-
-    const title = document.createElement("h3");
-    title.textContent = item.event;
-
-    const meta = document.createElement("p");
-    meta.className = "history-meta";
-    meta.textContent = formatDate(item.createdAt);
-
-    const preview = document.createElement("p");
-    preview.className = "history-preview";
-    preview.textContent = shorten(item?.scenario?.narrative || "", 180);
-
-    const actions = document.createElement("div");
-    actions.className = "history-actions";
-
-    const openButton = document.createElement("button");
-    openButton.type = "button";
-    openButton.className = "ghost-btn";
-    openButton.textContent = "Открыть в чате";
-    openButton.addEventListener("click", () => {
-      addTextMessage("user", item.event);
-      if (item?.scenario) {
-        addScenarioMessage(item.scenario, { interactive: false });
-      }
-    });
-
-    const rerunButton = document.createElement("button");
-    rerunButton.type = "button";
-    rerunButton.className = "ghost-btn";
-    rerunButton.textContent = "Повторить запрос";
-    rerunButton.addEventListener("click", async () => {
-      await startScenario(item.rootEvent || item.event);
-    });
-
-    actions.append(openButton, rerunButton);
-    card.append(title, meta, preview, actions);
-    historyList.append(card);
-  }
-}
-
-function formatDate(value) {
-  const date = new Date(value);
-  if (Number.isNaN(date.valueOf())) return "";
-  return new Intl.DateTimeFormat("ru-RU", {
-    dateStyle: "medium",
-    timeStyle: "short",
-  }).format(date);
-}
-
 function shorten(value, maxLength) {
   const text = String(value || "").replace(/\s+/g, " ").trim();
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1)}…`;
-}
-
-function saveHistory(value) {
-  localStorage.setItem(HISTORY_KEY, JSON.stringify(value));
-}
-
-function readHistory() {
-  try {
-    const raw = localStorage.getItem(HISTORY_KEY);
-    if (!raw) return [];
-    const parsed = JSON.parse(raw);
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .filter(
-        (item) =>
-          typeof item?.event === "string" &&
-          typeof item?.createdAt === "string" &&
-          item?.scenario &&
-          typeof item.scenario === "object"
-      )
-      .map((item) => ({
-        ...item,
-        scenario: normalizeStoredScenario(item.scenario),
-      }))
-      .slice(0, HISTORY_LIMIT);
-  } catch {
-    return [];
-  }
-}
-
-function normalizeStoredScenario(scenario) {
-  const narrative = sanitizeNarrativeText(scenario?.narrative);
-  const timeline = normalizeTimeline(scenario?.timeline);
-  const branches = normalizeBranches(scenario?.branches);
-  const images = normalizeImages(scenario?.images);
-  const shareCard = normalizeShareCard(scenario?.shareCard, narrative, timeline);
-
-  return {
-    narrative,
-    timeline,
-    branches,
-    images,
-    shareCard,
-  };
 }
 
 function sanitizeNarrativeText(value) {
