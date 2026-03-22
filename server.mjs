@@ -9,6 +9,11 @@ import { Resvg } from "@resvg/resvg-js";
 loadEnvFile();
 
 const PORT = Number(process.env.PORT || 3000);
+const WORMSOFT_API_KEY = process.env.WORMSOFT_API_KEY;
+const WORMSOFT_MODEL = process.env.WORMSOFT_MODEL || "openai/gpt-5.2";
+const WORMSOFT_BASE_URL =
+  process.env.WORMSOFT_BASE_URL || "https://ai.wormsoft.ru/api/gpt";
+
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
 const GEMINI_IMAGE_MODEL =
@@ -53,6 +58,16 @@ const FAILOVER_ORDER = (process.env.FAILOVER_ORDER || "")
   .filter(Boolean);
 
 const MODEL_CATALOG = [
+  {
+    id: "wormsoft-gpt-5.2",
+    label: "Wormsoft GPT-5.2",
+    provider: "WORMSOFT",
+    providerLabel: "WORMSOFT",
+    model: WORMSOFT_MODEL,
+    baseUrl: WORMSOFT_BASE_URL,
+    apiKey: WORMSOFT_API_KEY,
+    enableImages: false,
+  },
   {
     id: "gemini-2.5-flash",
     label: "Gemini 2.5 Flash",
@@ -116,6 +131,7 @@ const MODEL_CATALOG = [
 ];
 
 const UI_MODEL_IDS = [
+  "wormsoft-gpt-5.2",
   "gemini-2.5-flash",
   "groq-llama-3.1-70b",
   "openrouter-gemma-2-9b",
@@ -237,8 +253,9 @@ function missingModelMessage(model) {
   if (!model) {
     return (
       "Не найден API ключ. Добавьте хотя бы один из ключей: " +
-      "GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, MISTRAL_API_KEY, " +
-      "HUGGINGFACE_API_KEY или AIPRODUCTIV_API_KEY в .env и перезапустите сервер."
+      "WORMSOFT_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, " +
+      "MISTRAL_API_KEY, HUGGINGFACE_API_KEY или AIPRODUCTIV_API_KEY в .env " +
+      "и перезапустите сервер."
     );
   }
 

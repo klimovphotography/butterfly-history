@@ -6,6 +6,7 @@
 
 - Установленный Node.js (версия 18+)
 - Один или несколько API ключей (чем больше, тем надежнее failover):
+  - `WORMSOFT_API_KEY` (Wormsoft, модель по умолчанию `openai/gpt-5.2`)
   - `GEMINI_API_KEY` (Google AI Studio)
   - `GROQ_API_KEY` (Groq)
   - `OPENROUTER_API_KEY` (OpenRouter)
@@ -21,6 +22,9 @@
    ```
 2. В файле `.env` вставьте ваши ключи (или ключи):
    ```env
+   WORMSOFT_API_KEY=ваш_ключ
+   WORMSOFT_MODEL=openai/gpt-5.2
+   WORMSOFT_BASE_URL=https://ai.wormsoft.ru/api/gpt
    GEMINI_API_KEY=ваш_ключ
    GROQ_API_KEY=ваш_ключ
    OPENROUTER_API_KEY=ваш_ключ
