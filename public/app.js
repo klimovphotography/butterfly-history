@@ -46,7 +46,6 @@ const QUICK_START_EXAMPLES = [
   "Что если Смутное время на Руси закончилось полным вхождением страны в состав Речи Посполитой?",
 ];
 
-let activeScenario = null;
 let isLoading = false;
 let activeMode = "realism";
 const MODE_LABELS = {
@@ -55,6 +54,17 @@ const MODE_LABELS = {
   prosperity: "Эпоха процветания",
   madness: "Безумие",
   humor: "Юмор",
+};
+const CARD_FORMAT_OPTIONS = [
+  { id: "auto", label: "Авто" },
+  { id: "portrait", label: "9:16" },
+  { id: "square", label: "1:1" },
+  { id: "landscape", label: "16:9" },
+];
+const CARD_CAPTURE_SIZES = {
+  portrait: { width: 1080, height: 1920 },
+  square: { width: 1200, height: 1200 },
+  landscape: { width: 1600, height: 900 },
 };
 
 
@@ -91,11 +101,6 @@ async function startScenario(rawText) {
   const eventText = rawText.trim();
   if (!eventText || isLoading) return;
 
-  activeScenario = {
-    rootEvent: eventText,
-    steps: [],
-  };
-
   addTextMessage("user", eventText);
   form.reset();
 
@@ -103,25 +108,6 @@ async function startScenario(rawText) {
     event: eventText,
     branch: "",
     context: [],
-    mode: activeMode,
-  });
-}
-
-async function continueScenario(branchText) {
-  if (!activeScenario || isLoading) return;
-  const branch = String(branchText || "").trim();
-  if (!branch) return;
-
-  addTextMessage("user", `Что делаем дальше: ${branch}`);
-
-  await requestScenario({
-    event: activeScenario.rootEvent,
-    branch,
-    context: activeScenario.steps.map((step) => ({
-      branch: step.branch,
-      narrative: step.narrative,
-      timeline: step.timeline,
-    })),
     mode: activeMode,
   });
 }
@@ -150,14 +136,6 @@ async function requestScenario(payload) {
     if (!scenario) {
       addTextMessage("assistant", "Не удалось разобрать ответ ИИ.");
       return;
-    }
-
-    if (activeScenario) {
-      activeScenario.steps.push({
-        branch: payload.branch || "Старт",
-        narrative: scenario.narrative,
-        timeline: scenario.timeline,
-      });
     }
 
     addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
@@ -217,10 +195,6 @@ async function loadProviderMeta() {
 function setUiBusy(state) {
   button.disabled = state;
   button.textContent = state ? "Думаю..." : "Смоделировать";
-
-  for (const branchButton of messages.querySelectorAll(".branch-btn")) {
-    branchButton.disabled = state;
-  }
   if (randomButton) {
     randomButton.disabled = state;
   }
@@ -230,133 +204,154 @@ function setUiBusy(state) {
 }
 
 function addScenarioMessage(scenario, options = {}) {
-  const interactive = options.interactive !== false;
   const modeLabel = MODE_LABELS[options.mode] || MODE_LABELS[activeMode] || "Реализм";
   const article = document.createElement("article");
-  article.className = "message assistant";
+  article.className = "message assistant scenario-result";
   article.dataset.id = crypto.randomUUID();
 
-  const badge = document.createElement("div");
-  badge.className = "badge";
-  badge.textContent = `ИИ — ${modeLabel}`;
-  article.append(badge);
-
-  const narrative = document.createElement("p");
-  narrative.className = "body";
-  narrative.textContent = scenario.narrative;
-  article.append(narrative);
-
   if (scenario.shareCard) {
-    article.append(buildShareCard(scenario.shareCard));
+    article.append(
+      buildShareCard({
+        card: scenario.shareCard,
+        narrative: scenario.narrative,
+        timeline: scenario.timeline,
+        modeLabel,
+      })
+    );
+  } else {
+    const badge = document.createElement("div");
+    badge.className = "badge";
+    badge.textContent = `ИИ — ${modeLabel}`;
+    const narrative = document.createElement("p");
+    narrative.className = "body";
+    narrative.textContent = scenario.narrative;
+    article.append(badge, narrative);
   }
 
   // Таймлайн по годам скрыт, так как дублирует сторис-карточку.
-
-  if (scenario.images.length > 0) {
-    const title = document.createElement("p");
-    title.className = "section-title";
-    title.textContent = "Иллюстрации альтернативного мира";
-    article.append(title);
-    article.append(buildImageGrid(scenario.images));
-  }
-
-  if (interactive && scenario.branches.length > 0) {
-    const branchBox = document.createElement("div");
-    branchBox.className = "branch-box";
-
-    const title = document.createElement("p");
-    title.className = "section-title";
-    title.textContent = "Что делаем дальше?";
-    branchBox.append(title);
-
-    const list = document.createElement("div");
-    list.className = "branch-list";
-
-    for (const branch of scenario.branches) {
-      const btn = document.createElement("button");
-      btn.type = "button";
-      btn.className = "branch-btn";
-      btn.textContent = branch;
-      btn.addEventListener("click", async () => {
-        await continueScenario(branch);
-      });
-      list.append(btn);
-    }
-
-    branchBox.append(list);
-    article.append(branchBox);
-  }
 
   messages.append(article);
   scrollMessageToStart(article);
 }
 
-function buildYearTimeline(items) {
-  const timeline = document.createElement("ol");
-  timeline.className = "year-timeline";
-
-  for (const item of items) {
-    const li = document.createElement("li");
-    li.className = "year-item";
-
-    const year = document.createElement("div");
-    year.className = "year-badge";
-    year.textContent = String(item.year);
-
-    const content = document.createElement("div");
-    content.className = "year-content";
-
-    const title = document.createElement("p");
-    title.className = "year-title";
-    title.textContent = item.title;
-
-    const details = document.createElement("p");
-    details.className = "year-details";
-    details.textContent = item.details;
-
-    content.append(title, details);
-    li.append(year, content);
-    timeline.append(li);
-  }
-
-  return timeline;
-}
-
-function buildImageGrid(images) {
-  const grid = document.createElement("div");
-  grid.className = "image-grid";
-
-  for (const image of images) {
-    const card = document.createElement("figure");
-    card.className = "image-card";
-
-    const img = document.createElement("img");
-    img.loading = "lazy";
-    img.src = image.src;
-    img.alt = image.prompt || "Иллюстрация альтернативной истории";
-
-    const caption = document.createElement("figcaption");
-    caption.className = "image-caption";
-    caption.textContent = shorten(image.prompt || "Иллюстрация", 130);
-
-    card.append(img, caption);
-    grid.append(card);
-  }
-
-  return grid;
-}
-
-function buildShareCard(card) {
+function buildShareCard(payload) {
+  const { card } = payload;
   const wrapper = document.createElement("div");
   wrapper.className = "share-card";
+
+  const toolbar = document.createElement("div");
+  toolbar.className = "share-card-toolbar";
+
+  const formatGroup = document.createElement("div");
+  formatGroup.className = "share-card-control-group";
+
+  const actionGroup = document.createElement("div");
+  actionGroup.className = "share-card-control-group share-card-action-group";
+
+  const frameStage = document.createElement("div");
+  frameStage.className = "share-card-stage";
 
   const frame = document.createElement("div");
   frame.className = "share-card-frame";
   frame.dataset.captureId = crypto.randomUUID();
+  frameStage.append(frame);
+
+  let selectedFormat = "auto";
+  const formatButtons = new Map();
+
+  const renderFrame = () => {
+    const format = resolveCardFormat(selectedFormat);
+    frame.dataset.format = format;
+    frame.replaceChildren(buildShareCardFrame(payload, format));
+
+    for (const [formatId, button] of formatButtons) {
+      const isActive = formatId === selectedFormat;
+      button.classList.toggle("is-active", isActive);
+      button.setAttribute("aria-pressed", isActive ? "true" : "false");
+    }
+  };
+
+  for (const option of CARD_FORMAT_OPTIONS) {
+    const formatButton = document.createElement("button");
+    formatButton.type = "button";
+    formatButton.className = "share-card-control";
+    formatButton.textContent = option.label;
+    formatButton.setAttribute("aria-pressed", option.id === selectedFormat ? "true" : "false");
+    formatButton.addEventListener("click", () => {
+      selectedFormat = option.id;
+      renderFrame();
+    });
+    formatButtons.set(option.id, formatButton);
+    formatGroup.append(formatButton);
+  }
+
+  const copyButton = document.createElement("button");
+  copyButton.type = "button";
+  copyButton.className = "share-card-control";
+  copyButton.textContent = "Копировать текст";
+  copyButton.addEventListener("click", async () => {
+    const success = await copyTextToClipboard(buildShareCardText(payload));
+    setTemporaryButtonLabel(copyButton, success ? "Скопировано" : "Не вышло");
+  });
+
+  const shareButton = document.createElement("button");
+  shareButton.type = "button";
+  shareButton.className = "share-card-control";
+  shareButton.textContent = "Поделиться";
+  shareButton.addEventListener("click", async () => {
+    const format = frame.dataset.format || resolveCardFormat(selectedFormat);
+    const shared = await shareScenarioCard(frame, payload, format);
+    if (shared === "native") {
+      setTemporaryButtonLabel(shareButton, "Отправлено");
+      return;
+    }
+    if (shared === "copied") {
+      setTemporaryButtonLabel(shareButton, "Ссылка скопирована");
+      return;
+    }
+    setTemporaryButtonLabel(shareButton, "Не вышло");
+  });
+
+  const openButton = document.createElement("button");
+  openButton.type = "button";
+  openButton.className = "share-card-control share-card-download";
+  openButton.textContent = "Открыть PNG";
+  openButton.addEventListener("click", async () => {
+    const format = frame.dataset.format || resolveCardFormat(selectedFormat);
+    const opened = await openShareCardImage(frame, card, format);
+    setTemporaryButtonLabel(openButton, opened ? "Готово" : "Не вышло");
+  });
+
+  actionGroup.append(copyButton, shareButton, openButton);
+  toolbar.append(formatGroup, actionGroup);
+  wrapper.append(toolbar, frameStage);
+  renderFrame();
+
+  return wrapper;
+}
+
+function buildShareCardFrame(payload, format) {
+  const { card, narrative, modeLabel } = payload;
+  const footerLines = parseShareCardFooter(card.footer);
+  const storyParagraphs = buildStoryParagraphs(narrative, format);
+  const timelineItems = pickCardItemsForFormat(card.items, format);
+  const fragment = document.createDocumentFragment();
+
+  const header = document.createElement("div");
+  header.className = "share-card-header";
+
+  const meta = document.createElement("div");
+  meta.className = "share-card-meta";
 
   const eyebrow = document.createElement("p");
   eyebrow.className = "share-card-eyebrow";
   eyebrow.textContent = "Что если?";
+
+  const mode = document.createElement("span");
+  mode.className = "share-card-mode";
+  mode.textContent = modeLabel;
+
+  meta.append(eyebrow, mode);
 
   const title = document.createElement("h3");
   title.className = "share-card-title";
@@ -366,10 +361,38 @@ function buildShareCard(card) {
   subtitle.className = "share-card-subtitle";
   subtitle.textContent = card.subtitle;
 
+  header.append(meta, title, subtitle);
+
+  const body = document.createElement("div");
+  body.className = "share-card-body";
+
+  const story = document.createElement("section");
+  story.className = "share-card-story";
+
+  const storyLabel = document.createElement("p");
+  storyLabel.className = "share-card-section-title";
+  storyLabel.textContent = "Сценарий";
+
+  story.append(storyLabel);
+
+  for (const paragraphText of storyParagraphs) {
+    const paragraph = document.createElement("p");
+    paragraph.className = "share-card-paragraph";
+    paragraph.textContent = paragraphText;
+    story.append(paragraph);
+  }
+
+  const timeline = document.createElement("section");
+  timeline.className = "share-card-timeline";
+
+  const timelineLabel = document.createElement("p");
+  timelineLabel.className = "share-card-section-title";
+  timelineLabel.textContent = "Ключевые даты";
+
   const list = document.createElement("div");
   list.className = "share-card-list";
 
-  for (const item of card.items) {
+  for (const item of timelineItems) {
     const row = document.createElement("div");
     row.className = "share-card-item";
 
@@ -385,96 +408,364 @@ function buildShareCard(card) {
     list.append(row);
   }
 
+  timeline.append(timelineLabel, list);
+  body.append(story, timeline);
+
   const footer = document.createElement("div");
   footer.className = "share-card-footer";
 
   const tag = document.createElement("span");
   tag.className = "share-card-tag";
-  const footerLines = parseShareCardFooter(card.footer);
+  tag.dataset.domain = footerLines.domain;
+  tag.dataset.cta = footerLines.cta;
+
   const domain = document.createElement("span");
   domain.className = "share-card-domain";
   domain.textContent = footerLines.domain;
+
   const cta = document.createElement("span");
   cta.className = "share-card-cta";
   cta.textContent = footerLines.cta;
-  tag.dataset.domain = footerLines.domain;
-  tag.dataset.cta = footerLines.cta;
+
   tag.append(domain, cta);
-
   footer.append(tag);
-  frame.append(eyebrow, title, subtitle, list, footer);
-  wrapper.append(frame);
 
-  const openButton = document.createElement("button");
-  openButton.type = "button";
-  openButton.className = "share-card-download";
-  openButton.textContent = "Открыть изображение";
-  openButton.addEventListener("click", async () => {
-    await openShareCardImage(frame, card);
-  });
-
-  wrapper.append(openButton);
-  return wrapper;
+  fragment.append(header, body, footer);
+  return fragment;
 }
 
-async function openShareCardImage(target, card) {
-  if (!target || typeof window.html2canvas !== "function") {
-    return;
+function resolveCardFormat(selectedFormat) {
+  if (selectedFormat && selectedFormat !== "auto") {
+    return selectedFormat;
+  }
+
+  if (typeof window.matchMedia === "function" && window.matchMedia("(max-width: 760px)").matches) {
+    return "portrait";
+  }
+
+  return "landscape";
+}
+
+function buildStoryParagraphs(narrative, format) {
+  const text = String(narrative || "").replace(/\s+/g, " ").trim();
+  if (!text) {
+    return ["Гипотеза готова, но текст оказался пустым."];
+  }
+
+  const maxLengthByFormat = {
+    portrait: 420,
+    square: 560,
+    landscape: 720,
+  };
+  const targetParagraphsByFormat = {
+    portrait: 3,
+    square: 3,
+    landscape: 3,
+  };
+
+  const trimmed = trimTextForCard(text, maxLengthByFormat[format] || 760);
+  const sentences = trimmed
+    .match(/[^.!?]+[.!?]?/g)
+    ?.map((sentence) => sentence.trim())
+    .filter(Boolean);
+
+  if (!sentences || sentences.length <= 1) {
+    return [trimmed];
+  }
+
+  const perParagraph = Math.max(
+    1,
+    Math.ceil(sentences.length / (targetParagraphsByFormat[format] || 3))
+  );
+  const paragraphs = [];
+
+  for (let index = 0; index < sentences.length; index += perParagraph) {
+    const paragraph = sentences.slice(index, index + perParagraph).join(" ").trim();
+    if (paragraph) {
+      paragraphs.push(paragraph);
+    }
+  }
+
+  return paragraphs.slice(0, targetParagraphsByFormat[format] || 3);
+}
+
+function trimTextForCard(text, maxLength) {
+  if (text.length <= maxLength) {
+    return text;
+  }
+
+  const sliced = text.slice(0, maxLength);
+  const sentenceBreak = Math.max(
+    sliced.lastIndexOf(". "),
+    sliced.lastIndexOf("! "),
+    sliced.lastIndexOf("? ")
+  );
+
+  if (sentenceBreak >= Math.floor(maxLength * 0.55)) {
+    return sliced.slice(0, sentenceBreak + 1).trim();
+  }
+
+  return `${sliced.trimEnd()}…`;
+}
+
+function pickCardItemsForFormat(items, format) {
+  const countByFormat = {
+    portrait: 5,
+    square: 4,
+    landscape: 5,
+  };
+  const count = countByFormat[format] || 5;
+  return Array.isArray(items) ? items.slice(0, count) : [];
+}
+
+function buildShareCardText(payload) {
+  const { card, narrative, timeline, modeLabel } = payload;
+  const footerLines = parseShareCardFooter(card.footer);
+  const lines = [
+    card.title,
+    card.subtitle,
+    `Режим: ${modeLabel}`,
+    "",
+    narrative,
+    "",
+    "Ключевые даты:",
+    ...timeline.slice(0, 6).map((item) => `${item.year} — ${item.title}: ${item.details}`),
+    "",
+    footerLines.domain,
+    footerLines.cta,
+    getShareUrl(),
+  ];
+
+  return lines.filter(Boolean).join("\n");
+}
+
+function buildShareTeaser(payload) {
+  const { card } = payload;
+  return [card.title, card.subtitle].filter(Boolean).join("\n");
+}
+
+function getShareUrl() {
+  const current = String(window.location.href || "");
+  if (current.includes("localhost") || current.includes("127.0.0.1")) {
+    return "https://butterfly-history.ru/";
+  }
+  return current || "https://butterfly-history.ru/";
+}
+
+async function copyTextToClipboard(text) {
+  const value = String(text || "").trim();
+  if (!value) return false;
+
+  try {
+    if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+      await navigator.clipboard.writeText(value);
+      return true;
+    }
+  } catch {
+    // Fallback below.
   }
 
   try {
-    if (document.fonts && typeof document.fonts.ready?.then === "function") {
-      await document.fonts.ready;
-    }
-    await new Promise((resolve) => setTimeout(resolve, 50));
-    const captureId = target.dataset.captureId;
-    const canvas = await window.html2canvas(target, {
-      backgroundColor: null,
-      scale: 2,
-      useCORS: true,
-      onclone: (doc) => {
-        if (!captureId) return;
-        const clonedTarget = doc.querySelector(`[data-capture-id="${captureId}"]`);
-        if (!clonedTarget) return;
-        const tag = clonedTarget.querySelector(".share-card-tag");
-        if (!tag) return;
-        const domain = tag.dataset.domain || "butterfly-history.ru";
-        const cta = tag.dataset.cta || "смоделировать свою ветку реальности";
-        tag.textContent = `${domain}\n${cta}`;
-        tag.style.whiteSpace = "pre-line";
-        tag.style.textAlign = "center";
-        tag.style.color = "#061413";
-        tag.style.textShadow = "none";
-        tag.style.fontFamily = "Space Grotesk, Arial, sans-serif";
-      },
-    });
+    const field = document.createElement("textarea");
+    field.value = value;
+    field.setAttribute("readonly", "readonly");
+    field.style.position = "fixed";
+    field.style.left = "-9999px";
+    field.style.top = "0";
+    document.body.append(field);
+    field.select();
+    const copied = document.execCommand("copy");
+    field.remove();
+    return copied;
+  } catch {
+    return false;
+  }
+}
 
-    const dataUrl = canvas.toDataURL("image/png");
+function setTemporaryButtonLabel(button, nextLabel) {
+  if (!button) return;
+  const originalLabel = button.dataset.originalLabel || button.textContent;
+  button.dataset.originalLabel = originalLabel;
+  button.textContent = nextLabel;
+
+  if (button._labelResetTimer) {
+    window.clearTimeout(button._labelResetTimer);
+  }
+
+  button._labelResetTimer = window.setTimeout(() => {
+    button.textContent = button.dataset.originalLabel || originalLabel;
+  }, 1700);
+}
+
+async function openShareCardImage(target, card, format) {
+  if (!target || typeof window.html2canvas !== "function") {
+    return false;
+  }
+
+  try {
+    const asset = await renderShareCardAsset(target, format);
+    if (!asset?.dataUrl) {
+      return false;
+    }
+
+    const dataUrl = asset.dataUrl;
     const win = window.open();
     if (win) {
-      win.document.write(`<img src="${dataUrl}" alt="Share card" style="width:100%;height:auto;display:block;margin:0;" />`);
+      win.document.write(`<!doctype html>
+<html lang="ru">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Карточка сценария</title>
+    <style>
+      html, body {
+        margin: 0;
+        min-height: 100%;
+        background: #060606;
+      }
+      body {
+        display: flex;
+        justify-content: center;
+        padding: 10px;
+      }
+      img {
+        display: block;
+        width: auto;
+        max-width: 100%;
+        height: auto;
+      }
+    </style>
+  </head>
+  <body>
+    <img src="${dataUrl}" alt="Карточка сценария" />
+  </body>
+</html>`);
       win.document.close();
     } else {
       const link = document.createElement("a");
       link.href = dataUrl;
-      link.download = buildShareCardFilename(card);
+      link.download = buildShareCardFilename(card, format);
       document.body.append(link);
       link.click();
       link.remove();
     }
+    return true;
   } catch {
-    // Ignore download errors silently.
+    return false;
   }
 }
 
-function buildShareCardFilename(card) {
+async function shareScenarioCard(target, payload, format) {
+  const shareUrl = getShareUrl();
+  const teaser = buildShareTeaser(payload);
+
+  if (typeof navigator.share !== "function") {
+    const copied = await copyTextToClipboard(`${teaser}\n\n${shareUrl}`);
+    return copied ? "copied" : "failed";
+  }
+
+  try {
+    const asset = await renderShareCardAsset(target, format);
+    if (asset?.blob) {
+      const file = new File([asset.blob], buildShareCardFilename(payload.card, format), {
+        type: "image/png",
+      });
+      if (
+        typeof navigator.canShare === "function" &&
+        navigator.canShare({ files: [file] })
+      ) {
+        await navigator.share({
+          title: payload.card.title,
+          text: teaser,
+          url: shareUrl,
+          files: [file],
+        });
+        return "native";
+      }
+    }
+
+    await navigator.share({
+      title: payload.card.title,
+      text: teaser,
+      url: shareUrl,
+    });
+    return "native";
+  } catch {
+    return "failed";
+  }
+}
+
+async function renderShareCardAsset(target, format) {
+  if (!target || typeof window.html2canvas !== "function") {
+    return null;
+  }
+
+  if (document.fonts && typeof document.fonts.ready?.then === "function") {
+    await document.fonts.ready;
+  }
+  await new Promise((resolve) => setTimeout(resolve, 50));
+
+  const captureFormat = resolveCardFormat(format);
+  const exportSize = CARD_CAPTURE_SIZES[captureFormat] || CARD_CAPTURE_SIZES.portrait;
+  const rect = target.getBoundingClientRect();
+  const sourceWidth = Math.max(1, Math.round(rect.width || exportSize.width));
+  const sourceHeight = Math.max(1, Math.round(rect.height || exportSize.height));
+  const qualityScale = Math.max(
+    1,
+    Math.min(exportSize.width / sourceWidth, exportSize.height / sourceHeight)
+  );
+
+  const host = document.createElement("div");
+  host.style.position = "fixed";
+  host.style.left = "-10000px";
+  host.style.top = "0";
+  host.style.pointerEvents = "none";
+  host.style.opacity = "0";
+
+  const clone = target.cloneNode(true);
+  clone.dataset.format = captureFormat;
+  clone.style.width = `${sourceWidth}px`;
+  clone.style.height = `${sourceHeight}px`;
+  clone.style.maxWidth = "none";
+  clone.style.maxHeight = "none";
+  clone.style.aspectRatio = "auto";
+
+  host.append(clone);
+  document.body.append(host);
+
+  try {
+    const canvas = await window.html2canvas(clone, {
+      backgroundColor: null,
+      scale: qualityScale,
+      useCORS: true,
+      width: sourceWidth,
+      height: sourceHeight,
+      windowWidth: window.innerWidth,
+      windowHeight: window.innerHeight,
+    });
+    const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
+    return {
+      blob,
+      dataUrl: canvas.toDataURL("image/png"),
+    };
+  } finally {
+    host.remove();
+  }
+}
+
+function buildShareCardFilename(card, format = "portrait") {
   const base = String(card?.title || "share-card")
     .toLowerCase()
     .replace(/[^a-z0-9а-яё]+/gi, "-")
     .replace(/-+/g, "-")
     .replace(/^-|-$/g, "")
     .slice(0, 40);
-  return `${base || "share-card"}.png`;
+  const suffix = {
+    portrait: "9x16",
+    square: "1x1",
+    landscape: "16x9",
+  }[resolveCardFormat(format)] || "card";
+  return `${base || "share-card"}-${suffix}.png`;
 }
 
 function addTextMessage(role, text) {
@@ -615,7 +906,7 @@ function buildFallbackShareCard(narrative, timeline) {
   const trimmed = items
     .map((item) => ({
       year: item.year,
-      text: item.text.length > 90 ? `${item.text.slice(0, 87)}…` : item.text,
+      text: item.text.length > 70 ? `${item.text.slice(0, 67)}…` : item.text,
     }))
     .slice(0, 6);
 
