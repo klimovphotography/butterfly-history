@@ -7,6 +7,9 @@ const providerPill = document.getElementById("provider-pill");
 const modeTabs = document.querySelectorAll(".mode-tab");
 
 const CURRENT_YEAR = new Date().getFullYear();
+window.__SCENARIO_PAYLOAD__ = typeof window.__SCENARIO_PAYLOAD__ === "string"
+  ? window.__SCENARIO_PAYLOAD__
+  : "";
 const QUICK_START_EXAMPLES = [
   "Что если Атлантида не затонула а превратилась в технологическую сверхдержаву?",
   "Что если Гитлер поступил в Венскую академию художеств?",
@@ -601,7 +604,10 @@ async function syncScenarioHash(payload) {
 
 async function hydrateScenarioFromUrl() {
   const url = new URL(window.location.href);
-  let encoded = String(url.searchParams.get("scenario") || "").trim();
+  let encoded = String(window.__SCENARIO_PAYLOAD__ || "").trim();
+  if (!encoded) {
+    encoded = String(url.searchParams.get("scenario") || "").trim();
+  }
   if (!encoded) {
     const shortId = String(url.searchParams.get("s") || "").trim();
     if (shortId) {

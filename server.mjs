@@ -1361,7 +1361,8 @@ async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butte
         scenarioParam = String(store[shortId]?.scenario || "").trim();
       }
     }
-    const injected = injectScenarioMeta(rawHtml, scenarioParam, siteUrl);
+    const withBootstrap = injectScenarioBootstrap(rawHtml, scenarioParam);
+    const injected = injectScenarioMeta(withBootstrap, scenarioParam, siteUrl);
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     if (method === "HEAD") {
       res.end();
@@ -1375,6 +1376,21 @@ async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butte
     }
     throw error;
   }
+}
+
+function injectScenarioBootstrap(html, scenarioParam) {
+  const scenario = String(scenarioParam || "").trim();
+  if (!scenario) {
+    return html.replace(
+      "<!-- SCENARIO_BOOTSTRAP -->",
+      "<script>window.__SCENARIO_PAYLOAD__ = \"\";</script>"
+    );
+  }
+
+  return html.replace(
+    "<!-- SCENARIO_BOOTSTRAP -->",
+    `<script>window.__SCENARIO_PAYLOAD__ = "${escapeJsString(scenario)}";</script>`
+  );
 }
 
 function injectScenarioMeta(html, scenarioParam, siteUrl) {
@@ -1661,6 +1677,14 @@ function escapeHtmlAttr(value) {
     .replace(/"/g, "&quot;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function escapeJsString(value) {
+  return String(value || "")
+    .replace(/\\/g, "\\\\")
+    .replace(/"/g, '\\"')
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
 }
 
 function getContentType(filePath) {
