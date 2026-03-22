@@ -71,6 +71,7 @@ const CARD_CAPTURE_SIZES = {
 initModeTabs();
 
 loadProviderMeta();
+hydrateScenarioFromUrl();
 
 input.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey) return;
@@ -204,20 +205,27 @@ function setUiBusy(state) {
 }
 
 function addScenarioMessage(scenario, options = {}) {
-  const modeLabel = MODE_LABELS[options.mode] || MODE_LABELS[activeMode] || "Реализм";
+  const modeId = options.mode || scenario.mode || activeMode;
+  const modeLabel = MODE_LABELS[modeId] || MODE_LABELS[activeMode] || "Реализм";
   const article = document.createElement("article");
   article.className = "message assistant scenario-result";
   article.dataset.id = crypto.randomUUID();
 
   if (scenario.shareCard) {
+    const sharePayload = {
+      card: scenario.shareCard,
+      narrative: scenario.narrative,
+      timeline: scenario.timeline,
+      modeLabel,
+      modeId,
+      event: scenario.event || scenario.shareCard.title || "",
+    };
     article.append(
-      buildShareCard({
-        card: scenario.shareCard,
-        narrative: scenario.narrative,
-        timeline: scenario.timeline,
-        modeLabel,
-      })
+      buildShareCard(sharePayload)
     );
+    if (options.interactive !== false) {
+      syncScenarioHash(sharePayload);
+    }
   } else {
     const badge = document.createElement("div");
     badge.className = "badge";
@@ -334,7 +342,6 @@ function buildShareCardFrame(payload, format) {
   const { card, narrative, modeLabel } = payload;
   const footerLines = parseShareCardFooter(card.footer);
   const storyParagraphs = buildStoryParagraphs(narrative, format);
-  const timelineItems = pickCardItemsForFormat(card.items, format);
   const fragment = document.createDocumentFragment();
 
   const header = document.createElement("div");
@@ -369,47 +376,14 @@ function buildShareCardFrame(payload, format) {
   const story = document.createElement("section");
   story.className = "share-card-story";
 
-  const storyLabel = document.createElement("p");
-  storyLabel.className = "share-card-section-title";
-  storyLabel.textContent = "Сценарий";
-
-  story.append(storyLabel);
-
   for (const paragraphText of storyParagraphs) {
     const paragraph = document.createElement("p");
     paragraph.className = "share-card-paragraph";
-    paragraph.textContent = paragraphText;
+    appendNarrativeWithYearHighlights(paragraph, paragraphText);
     story.append(paragraph);
   }
 
-  const timeline = document.createElement("section");
-  timeline.className = "share-card-timeline";
-
-  const timelineLabel = document.createElement("p");
-  timelineLabel.className = "share-card-section-title";
-  timelineLabel.textContent = "Ключевые даты";
-
-  const list = document.createElement("div");
-  list.className = "share-card-list";
-
-  for (const item of timelineItems) {
-    const row = document.createElement("div");
-    row.className = "share-card-item";
-
-    const year = document.createElement("span");
-    year.className = "share-card-year";
-    year.textContent = String(item.year);
-
-    const text = document.createElement("span");
-    text.className = "share-card-text";
-    text.textContent = item.text;
-
-    row.append(year, text);
-    list.append(row);
-  }
-
-  timeline.append(timelineLabel, list);
-  body.append(story, timeline);
+  body.append(story);
 
   const footer = document.createElement("div");
   footer.className = "share-card-footer";
@@ -447,36 +421,35 @@ function resolveCardFormat(selectedFormat) {
 }
 
 function buildStoryParagraphs(narrative, format) {
-  const text = String(narrative || "").replace(/\s+/g, " ").trim();
+  const text = String(narrative || "").replace(/\r/g, "").trim();
   if (!text) {
     return ["Гипотеза готова, но текст оказался пустым."];
   }
 
-  const maxLengthByFormat = {
-    portrait: 420,
-    square: 560,
-    landscape: 720,
-  };
-  const targetParagraphsByFormat = {
-    portrait: 3,
-    square: 3,
-    landscape: 3,
-  };
+  const normalized = text.replace(/[ \t]+/g, " ");
+  const explicitParagraphs = normalized
+    .split(/\n{2,}/)
+    .map((block) => block.replace(/\s+/g, " ").trim())
+    .filter(Boolean);
+  if (explicitParagraphs.length > 0) {
+    return explicitParagraphs;
+  }
 
-  const trimmed = trimTextForCard(text, maxLengthByFormat[format] || 760);
-  const sentences = trimmed
-    .match(/[^.!?]+[.!?]?/g)
-    ?.map((sentence) => sentence.trim())
+  const sentences = normalized
+    .match(/[^.!?]+[.!?…]?/g)
+    ?.map((sentence) => sentence.replace(/\s+/g, " ").trim())
     .filter(Boolean);
 
   if (!sentences || sentences.length <= 1) {
-    return [trimmed];
+    return [normalized.replace(/\s+/g, " ").trim()];
   }
 
-  const perParagraph = Math.max(
-    1,
-    Math.ceil(sentences.length / (targetParagraphsByFormat[format] || 3))
-  );
+  const preferredSentencesPerParagraphByFormat = {
+    portrait: 2,
+    square: 2,
+    landscape: 3,
+  };
+  const perParagraph = preferredSentencesPerParagraphByFormat[format] || 2;
   const paragraphs = [];
 
   for (let index = 0; index < sentences.length; index += perParagraph) {
@@ -486,70 +459,172 @@ function buildStoryParagraphs(narrative, format) {
     }
   }
 
-  return paragraphs.slice(0, targetParagraphsByFormat[format] || 3);
+  return paragraphs;
 }
 
-function trimTextForCard(text, maxLength) {
-  if (text.length <= maxLength) {
-    return text;
+function appendNarrativeWithYearHighlights(target, text) {
+  const value = String(text || "");
+  if (!value) return;
+  const yearRegex = /\b(1[0-9]{3}|20[0-9]{2}|2100)\b/g;
+  let lastIndex = 0;
+  let match;
+
+  while ((match = yearRegex.exec(value)) !== null) {
+    const year = match[1];
+    const start = match.index;
+    if (start > lastIndex) {
+      target.append(document.createTextNode(value.slice(lastIndex, start)));
+    }
+    const chip = document.createElement("span");
+    chip.className = "share-card-inline-year";
+    chip.textContent = year;
+    target.append(chip);
+    lastIndex = start + year.length;
   }
 
-  const sliced = text.slice(0, maxLength);
-  const sentenceBreak = Math.max(
-    sliced.lastIndexOf(". "),
-    sliced.lastIndexOf("! "),
-    sliced.lastIndexOf("? ")
-  );
-
-  if (sentenceBreak >= Math.floor(maxLength * 0.55)) {
-    return sliced.slice(0, sentenceBreak + 1).trim();
+  if (lastIndex < value.length) {
+    target.append(document.createTextNode(value.slice(lastIndex)));
   }
-
-  return `${sliced.trimEnd()}…`;
-}
-
-function pickCardItemsForFormat(items, format) {
-  const countByFormat = {
-    portrait: 5,
-    square: 4,
-    landscape: 5,
-  };
-  const count = countByFormat[format] || 5;
-  return Array.isArray(items) ? items.slice(0, count) : [];
 }
 
 function buildShareCardText(payload) {
-  const { card, narrative, timeline, modeLabel } = payload;
-  const footerLines = parseShareCardFooter(card.footer);
+  const { card, narrative } = payload;
   const lines = [
     card.title,
     card.subtitle,
-    `Режим: ${modeLabel}`,
     "",
     narrative,
     "",
-    "Ключевые даты:",
-    ...timeline.slice(0, 6).map((item) => `${item.year} — ${item.title}: ${item.details}`),
-    "",
-    footerLines.domain,
-    footerLines.cta,
-    getShareUrl(),
+    getShareUrl(payload),
   ];
 
   return lines.filter(Boolean).join("\n");
 }
 
 function buildShareTeaser(payload) {
-  const { card } = payload;
-  return [card.title, card.subtitle].filter(Boolean).join("\n");
+  const { card, narrative } = payload;
+  const lead = extractLeadSentence(narrative);
+  return [card.title, card.subtitle, lead].filter(Boolean).join("\n");
 }
 
-function getShareUrl() {
+function getShareUrl(payload) {
+  const hash = payload ? buildScenarioHash(payload) : "";
   const current = String(window.location.href || "");
+  const withScenarioQuery = (base) => {
+    if (!hash) return base;
+    const url = new URL(base);
+    url.searchParams.set("scenario", hash);
+    url.hash = "";
+    return url.toString();
+  };
   if (current.includes("localhost") || current.includes("127.0.0.1")) {
-    return "https://butterfly-history.ru/";
+    return withScenarioQuery("https://butterfly-history.ru/");
   }
-  return current || "https://butterfly-history.ru/";
+  return withScenarioQuery(current || "https://butterfly-history.ru/");
+}
+
+function extractLeadSentence(narrative) {
+  const text = String(narrative || "").replace(/\s+/g, " ").trim();
+  if (!text) return "";
+  const sentence = text.match(/[^.!?]+[.!?]/)?.[0]?.trim() || "";
+  if (!sentence) return "";
+  return sentence.length > 170 ? `${sentence.slice(0, 167)}…` : sentence;
+}
+
+function buildScenarioHash(payload) {
+  const data = {
+    v: 1,
+    event: String(payload?.event || payload?.card?.title || "").trim(),
+    mode: String(payload?.modeId || activeMode || "realism").trim(),
+    title: String(payload?.card?.title || "").trim(),
+    subtitle: String(payload?.card?.subtitle || "").trim(),
+    narrative: String(payload?.narrative || "").trim(),
+  };
+  const json = JSON.stringify(data);
+  const bytes = new TextEncoder().encode(json);
+  let binary = "";
+  for (const byte of bytes) {
+    binary += String.fromCharCode(byte);
+  }
+  return btoa(binary).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/g, "");
+}
+
+function parseScenarioHash(hash) {
+  const safe = String(hash || "").replace(/-/g, "+").replace(/_/g, "/");
+  const padding = (4 - (safe.length % 4)) % 4;
+  const normalized = safe + "=".repeat(padding);
+  try {
+    const binary = atob(normalized);
+    const bytes = Uint8Array.from(binary, (char) => char.charCodeAt(0));
+    const json = new TextDecoder().decode(bytes);
+    const data = JSON.parse(json);
+    if (!data || typeof data !== "object") return null;
+    return data;
+  } catch {
+    return null;
+  }
+}
+
+function syncScenarioHash(payload) {
+  if (!window.history?.replaceState) return;
+  const hash = buildScenarioHash(payload);
+  if (!hash) return;
+  const url = new URL(window.location.href);
+  url.searchParams.set("scenario", hash);
+  url.hash = "";
+  window.history.replaceState(null, "", `${url.pathname}${url.search}`);
+}
+
+function hydrateScenarioFromUrl() {
+  const url = new URL(window.location.href);
+  let encoded = String(url.searchParams.get("scenario") || "").trim();
+  if (!encoded) {
+    const legacyHash = String(window.location.hash || "");
+    if (legacyHash.startsWith("#scenario=")) {
+      encoded = legacyHash.slice("#scenario=".length).trim();
+    }
+  }
+  if (!encoded) return;
+
+  const parsed = parseScenarioHash(encoded);
+  if (!parsed) return;
+
+  const eventCandidate =
+    typeof parsed.event === "string" && parsed.event.trim()
+      ? parsed.event.trim()
+      : typeof parsed.title === "string"
+        ? parsed.title.trim()
+        : "";
+  const event = eventCandidate;
+  const modeId = typeof parsed.mode === "string" ? parsed.mode.trim() : "realism";
+  const narrative = sanitizeNarrativeText(parsed.narrative || "");
+  if (!narrative) return;
+
+  const timeline = normalizeTimeline([]);
+  const shareCard = normalizeShareCard(
+    {
+      title: parsed.title,
+      subtitle: parsed.subtitle,
+      items: [],
+      footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
+    },
+    narrative,
+    timeline,
+    event
+  );
+
+  addScenarioMessage(
+    {
+      narrative,
+      timeline,
+      branches: normalizeBranches([]),
+      images: [],
+      shareCard,
+      event: event || shareCard.title,
+      mode: modeId,
+    },
+    { interactive: false, mode: modeId }
+  );
 }
 
 async function copyTextToClipboard(text) {
@@ -656,7 +731,7 @@ async function openShareCardImage(target, card, format) {
 }
 
 async function shareScenarioCard(target, payload, format) {
-  const shareUrl = getShareUrl();
+  const shareUrl = getShareUrl(payload);
   const teaser = buildShareTeaser(payload);
 
   if (typeof navigator.share !== "function") {
@@ -815,22 +890,25 @@ function normalizeScenario(data) {
   const timeline = normalizeTimeline(raw.timeline);
   const branches = normalizeBranches(raw.branches);
   const images = normalizeImages(raw.images);
-  const shareCard = normalizeShareCard(raw.shareCard || raw.share_card, narrative, timeline);
+  const event = typeof raw.event === "string" ? raw.event.trim() : "";
+  const mode = typeof raw.mode === "string" ? raw.mode.trim() : "";
+  const shareCard = normalizeShareCard(raw.shareCard || raw.share_card, narrative, timeline, event);
 
-  return { narrative, timeline, branches, images, shareCard };
+  return { narrative, timeline, branches, images, shareCard, event, mode };
 }
 
-function normalizeShareCard(rawCard, narrative, timeline) {
-  const fallback = buildFallbackShareCard(narrative, timeline);
+function normalizeShareCard(rawCard, narrative, timeline, event = "") {
+  const fallback = buildFallbackShareCard(narrative, timeline, event);
+  const forcedTitle = event || fallback.title;
 
   if (!rawCard || typeof rawCard !== "object") {
-    return fallback;
+    return {
+      ...fallback,
+      title: forcedTitle,
+    };
   }
 
-  const title =
-    typeof rawCard.title === "string" && rawCard.title.trim()
-      ? rawCard.title.trim()
-      : fallback.title;
+  const title = forcedTitle;
   const subtitle =
     typeof rawCard.subtitle === "string" && rawCard.subtitle.trim()
       ? rawCard.subtitle.trim()
@@ -895,8 +973,8 @@ function ensureUniqueShareCardYears(items, timeline) {
   return result;
 }
 
-function buildFallbackShareCard(narrative, timeline) {
-  const safeTitle = buildCardTitle(narrative);
+function buildFallbackShareCard(narrative, timeline, event = "") {
+  const safeTitle = event || "Что если?";
   const subtitle = buildCardSubtitle(narrative);
   const items = timeline.slice(0, 6).map((point) => ({
     year: point.year || CURRENT_YEAR,
@@ -923,14 +1001,6 @@ function buildFallbackShareCard(narrative, timeline) {
     items: trimmed,
     footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
   };
-}
-
-function buildCardTitle(narrative) {
-  const text = String(narrative || "").replace(/\s+/g, " ").trim();
-  if (!text) return "Что если? Альтернативная хроника";
-  const chunk = text.split(/[.!?]/).find((part) => part.trim())?.trim() || text;
-  const trimmed = chunk.length > 70 ? `${chunk.slice(0, 67)}…` : chunk;
-  return trimmed;
 }
 
 function buildCardSubtitle(narrative) {

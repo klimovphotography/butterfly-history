@@ -444,20 +444,16 @@ button:disabled {
 
 .share-card-frame {
   width: min(100%, 860px);
-  aspect-ratio: 16 / 9;
-  --share-card-padding: 20px;
-  --share-card-gap: 14px;
-  --share-card-story-padding: 13px 14px;
-  --share-card-item-padding: 7px 10px;
-  --share-card-item-gap: 10px;
+  aspect-ratio: auto;
+  min-height: 560px;
+  --share-card-padding: 22px;
+  --share-card-gap: 16px;
+  --share-card-story-padding: 16px 16px;
   --share-card-eyebrow-size: 0.72rem;
   --share-card-mode-size: 0.72rem;
-  --share-card-title-size: 1.55rem;
-  --share-card-subtitle-size: 0.94rem;
-  --share-card-section-size: 0.72rem;
-  --share-card-paragraph-size: 0.9rem;
-  --share-card-year-size: 0.8rem;
-  --share-card-text-size: 0.82rem;
+  --share-card-title-size: 1.7rem;
+  --share-card-subtitle-size: 0.96rem;
+  --share-card-paragraph-size: 0.92rem;
   --share-card-tag-domain-size: 0.88rem;
   --share-card-tag-cta-size: 0.64rem;
   border-radius: 22px;
@@ -478,55 +474,43 @@ button:disabled {
 
 .share-card-frame[data-format="portrait"] {
   width: min(100%, 420px);
-  aspect-ratio: 9 / 16;
+  aspect-ratio: auto;
+  min-height: 820px;
   padding-top: 24px;
   --share-card-padding: 24px;
-  --share-card-gap: 16px;
-  --share-card-story-padding: 16px 16px;
-  --share-card-item-padding: 9px 12px;
-  --share-card-item-gap: 12px;
+  --share-card-gap: 18px;
+  --share-card-story-padding: 18px 18px;
   --share-card-eyebrow-size: 0.78rem;
   --share-card-mode-size: 0.78rem;
-  --share-card-title-size: 1.76rem;
-  --share-card-subtitle-size: 1.02rem;
-  --share-card-section-size: 0.78rem;
-  --share-card-paragraph-size: 1.02rem;
-  --share-card-year-size: 0.88rem;
-  --share-card-text-size: 0.9rem;
+  --share-card-title-size: 1.94rem;
+  --share-card-subtitle-size: 1.04rem;
+  --share-card-paragraph-size: 1.03rem;
   --share-card-tag-domain-size: 0.98rem;
   --share-card-tag-cta-size: 0.7rem;
 }
 
 .share-card-frame[data-format="square"] {
   width: min(100%, 620px);
-  aspect-ratio: 1;
+  aspect-ratio: auto;
+  min-height: 700px;
   --share-card-padding: 22px;
-  --share-card-gap: 15px;
-  --share-card-story-padding: 15px 15px;
-  --share-card-item-padding: 8px 11px;
-  --share-card-item-gap: 11px;
-  --share-card-title-size: 1.42rem;
-  --share-card-subtitle-size: 0.92rem;
-  --share-card-section-size: 0.74rem;
-  --share-card-paragraph-size: 0.88rem;
-  --share-card-year-size: 0.82rem;
-  --share-card-text-size: 0.84rem;
+  --share-card-gap: 16px;
+  --share-card-story-padding: 16px 16px;
+  --share-card-title-size: 1.56rem;
+  --share-card-subtitle-size: 0.96rem;
+  --share-card-paragraph-size: 0.92rem;
 }
 
 .share-card-frame[data-format="landscape"] {
   width: min(100%, 860px);
-  aspect-ratio: 16 / 9;
+  aspect-ratio: auto;
+  min-height: 560px;
   --share-card-padding: 22px;
-  --share-card-gap: 15px;
-  --share-card-story-padding: 15px 16px;
-  --share-card-item-padding: 9px 12px;
-  --share-card-item-gap: 11px;
-  --share-card-title-size: 1.82rem;
+  --share-card-gap: 16px;
+  --share-card-story-padding: 16px 17px;
+  --share-card-title-size: 1.96rem;
   --share-card-subtitle-size: 1.08rem;
-  --share-card-section-size: 0.82rem;
-  --share-card-paragraph-size: 0.98rem;
-  --share-card-year-size: 0.94rem;
-  --share-card-text-size: 0.94rem;
+  --share-card-paragraph-size: 1rem;
   --share-card-tag-domain-size: 1rem;
   --share-card-tag-cta-size: 0.7rem;
 }
@@ -628,40 +612,18 @@ button:disabled {
 
 .share-card-body {
   display: grid;
-  gap: var(--share-card-gap);
+  gap: 0;
   min-height: 0;
-  overflow: hidden;
+  overflow: visible;
 }
 
-.share-card-frame[data-format="portrait"] .share-card-body {
-  grid-template-columns: 1fr;
-}
-
-.share-card-frame[data-format="square"] .share-card-body {
-  grid-template-columns: minmax(0, 1.08fr) minmax(220px, 0.92fr);
-}
-
-.share-card-frame[data-format="landscape"] .share-card-body {
-  grid-template-columns: minmax(0, 1.22fr) minmax(260px, 0.88fr);
-}
-
-.share-card-story,
-.share-card-timeline {
+.share-card-story {
   min-width: 0;
   padding: var(--share-card-story-padding);
   border-radius: 16px;
   background: rgba(10, 10, 10, 0.5);
   border: 1px solid rgba(255, 255, 255, 0.08);
   backdrop-filter: blur(8px);
-}
-
-.share-card-section-title {
-  margin: 0 0 8px;
-  font-size: var(--share-card-section-size);
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  font-weight: 700;
-  color: #7ce1d9;
 }
 
 .share-card-paragraph {
@@ -675,34 +637,16 @@ button:disabled {
   margin-top: 8px;
 }
 
-.share-card-list {
-  display: grid;
-  gap: 8px;
-  align-content: start;
-}
-
-.share-card-item {
-  display: grid;
-  grid-template-columns: auto 1fr;
-  gap: var(--share-card-item-gap);
-  align-items: start;
-  padding: var(--share-card-item-padding);
-  border-radius: 12px;
-  background: rgba(6, 6, 6, 0.52);
-  border: 1px solid rgba(255, 255, 255, 0.08);
-}
-
-.share-card-year {
+.share-card-inline-year {
   font-family: "IBM Plex Mono", monospace;
-  font-size: var(--share-card-year-size);
   font-weight: 700;
   color: #7ce1d9;
-}
-
-.share-card-text {
-  font-size: var(--share-card-text-size);
-  line-height: 1.36;
-  color: rgba(255, 255, 255, 0.86);
+  background: rgba(124, 225, 217, 0.12);
+  border: 1px solid rgba(124, 225, 217, 0.32);
+  border-radius: 7px;
+  padding: 0 5px;
+  margin: 0 2px;
+  white-space: nowrap;
 }
 
 .share-card-footer {
@@ -922,11 +866,6 @@ button:disabled {
   .share-card-frame[data-format="landscape"] {
     width: 100%;
   }
-
-  .share-card-frame[data-format="square"] .share-card-body,
-  .share-card-frame[data-format="landscape"] .share-card-body {
-    grid-template-columns: 1fr;
-  }
 }
 
 @media (max-width: 480px) {
@@ -950,22 +889,5 @@ button:disabled {
   .share-card-paragraph {
     font-size: 0.84rem;
     line-height: 1.42;
-  }
-
-  .share-card-list {
-    gap: 5px;
-  }
-
-  .share-card-item {
-    padding: 6px 8px;
-    gap: 8px;
-  }
-
-  .share-card-year {
-    font-size: 0.74rem;
-  }
-
-  .share-card-text {
-    font-size: 0.78rem;
   }
 }

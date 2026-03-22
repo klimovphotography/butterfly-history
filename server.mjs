@@ -3,6 +3,7 @@ import fsp from "node:fs/promises";
 import http from "node:http";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { Resvg } from "@resvg/resvg-js";
 
 loadEnvFile();
 
@@ -249,7 +250,7 @@ const PUBLIC_DIR = path.join(__dirname, "public");
 
 const server = http.createServer(async (req, res) => {
   try {
-  const url = new URL(req.url || "/", `http://${req.headers.host}`);
+    const url = new URL(req.url || "/", `http://${req.headers.host}`);
 
     if (req.method === "GET" && url.pathname === "/api/meta") {
       const defaultModelId = getDefaultModelId();
@@ -281,6 +282,18 @@ const server = http.createServer(async (req, res) => {
       }
       if (url.pathname === "/robots.txt") {
         handleRobots(req, res);
+        return;
+      }
+      if (url.pathname === "/og/scenario.svg") {
+        await handleScenarioOgImage(req, res, url);
+        return;
+      }
+      if (url.pathname === "/og/scenario.png") {
+        await handleScenarioOgPng(req, res, url);
+        return;
+      }
+      if (url.pathname === "/" || url.pathname === "/index.html") {
+        await serveIndexHtml(url, res, req.method, getSiteUrl(req));
         return;
       }
     }
@@ -342,7 +355,13 @@ async function handleAltHistory(req, res) {
       scenario.images = [];
     }
 
-    sendJson(res, 200, { scenario });
+    sendJson(res, 200, {
+      scenario: {
+        ...scenario,
+        event,
+        mode: modeConfig.id,
+      },
+    });
   } catch (error) {
     console.error(error);
     const message =
@@ -444,6 +463,10 @@ function buildUserPrompt({ event, branch, context, currentYear }) {
 ${serializedContext}
 
 Продолжи именно эту альтернативную ветку.
+Сделай текст ярким и репостным: чтобы хотелось отправить другу в чат.
+Главный заголовок карточки уже равен исходному вопросу, не придумывай абстрактных названий.
+Структура narrative: 1) главный перелом, 2) цепочка конкретных последствий, 3) картина мира сегодня.
+Пиши конкретно: с датами, последствиями и деталями жизни людей, без канцелярита и расплывчатых фраз.
 `.trim();
   }
 
@@ -454,6 +477,10 @@ ${serializedContext}
 ${serializedContext}
 
 Построй первый шаг альтернативной истории.
+Сделай текст ярким и репостным: чтобы хотелось отправить другу в чат.
+Главный заголовок карточки уже равен исходному вопросу, не придумывай абстрактных названий.
+Структура narrative: 1) главный перелом, 2) цепочка конкретных последствий, 3) картина мира сегодня.
+Пиши конкретно: с датами, последствиями и деталями жизни людей, без канцелярита и расплывчатых фраз.
 `.trim();
 }
 
@@ -519,84 +546,112 @@ function buildSystemMessage(modeId, currentYear) {
       return {
         role: "system",
         content: `
-Ты летописец катастроф. Опиши наихудший из возможных вариантов. Каждое решение ведет к краху войнам и упадку. Атмосфера тотальной безысходности.
+Ты летописец катастроф и мрачных альтернативных миров. Пиши тревожно, тяжело, с ощущением надвигающейся катастрофы. Не скатывайся в сухую аналитику.
 Отвечай только на русском языке. Английский не используй.
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
-- "narrative": строка 140-220 слов. Начинай с самого сильного последствия в первых 1-2 предложениях. Пиши плотно, конкретно и без воды.
+- "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
 - "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative:
+- "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "subtitle" должен быть коротким хуком для репоста.
-  "items" содержит 4-6 коротких пунктов (до ~70 символов каждый), которые дополняют narrative, а не пересказывают его дословно.
+Требования:
+- "share_card.title" должен в точности повторять исходный вопрос пользователя, без перефразирования.
+- "share_card.subtitle" — короткий тревожный хук, 1 фраза.
+- Сначала назови главный перелом, потом покажи цепочку последствий, потом дай картину мира сегодня.
+- В narrative обязательно вплетай 3-5 конкретных лет прямо в текст.
+- Показывай, что конкретно рушится или меняется: власть, города, экономика, быт, страхи людей, международные союзы.
+- Избегай канцелярита, воды и общих фраз вроде "все изменилось".
+- Финал должен быть сильным и запоминающимся, чтобы текст хотелось переслать.
+- "items" содержит 4-5 коротких строк как запасной формат и не повторяет narrative дословно.
 `.trim(),
       };
     case "prosperity":
       return {
         role: "system",
         content: `
-Ты оптимистичный футуролог. Опиши утопичный исход где люди решают конфликты мирным путем. Фокус на научном и социальном прогрессе.
+Ты футуролог и автор вдохновляющей альтернативной истории. Пиши масштабно и ярко: ощущение великого шанса, но без сладкой наивности.
 Отвечай только на русском языке. Английский не используй.
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
-- "narrative": строка 140-220 слов. Начинай с самого сильного последствия в первых 1-2 предложениях. Пиши плотно, конкретно и без воды.
+- "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
 - "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative:
+- "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "subtitle" должен быть коротким хуком для репоста.
-  "items" содержит 4-6 коротких пунктов (до ~70 символов каждый), которые дополняют narrative, а не пересказывают его дословно.
+Требования:
+- "share_card.title" должен в точности повторять исходный вопрос пользователя, без перефразирования.
+- "share_card.subtitle" — короткий вдохновляющий хук, 1 фраза.
+- Сначала назови главный перелом, потом покажи цепочку последствий, потом дай картину мира сегодня.
+- В narrative обязательно вплетай 3-5 конкретных лет прямо в текст.
+- Пиши конкретно, как меняются города, наука, образование, медицина, культура, уровень жизни и отношения между странами.
+- Избегай канцелярита, воды и общих фраз вроде "это привело к изменениям".
+- Финал должен звучать мощно и светло, чтобы текст хотелось переслать.
+- "items" содержит 4-5 коротких строк как запасной формат и не повторяет narrative дословно.
 `.trim(),
       };
     case "madness":
       return {
         role: "system",
         content: `
-Ты автор артхаусного кино. Напиши абсолютно абсурдный сценарий где ломаются базовые законы логики. Происходит лютая дичь и пространственные парадоксы.
+Ты автор безумной и очень образной альтернативной истории. Пиши странно, ярко и неожиданно, но сохраняй причинно-следственную связность.
 Отвечай только на русском языке. Английский не используй.
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
-- "narrative": строка 140-220 слов. Начинай с самого сильного последствия в первых 1-2 предложениях. Пиши плотно, конкретно и без воды.
+- "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
 - "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative:
+- "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "subtitle" должен быть коротким хуком для репоста.
-  "items" содержит 4-6 коротких пунктов (до ~70 символов каждый), которые дополняют narrative, а не пересказывают его дословно.
+Требования:
+- "share_card.title" должен в точности повторять исходный вопрос пользователя, без перефразирования.
+- "share_card.subtitle" — короткий хук с эффектом удивления, 1 фраза.
+- Сначала назови главный перелом, потом покажи цепочку последствий, потом дай картину мира сегодня.
+- В narrative обязательно вплетай 3-5 конкретных лет прямо в текст.
+- Даже в безумии показывай конкретику: как меняются политика, культура, технологии, города и повседневная жизнь.
+- Избегай канцелярита, воды и общих фраз.
+- Финал должен быть мощным, странным и запоминающимся, чтобы текст хотелось переслать.
+- "items" содержит 4-5 коротких строк как запасной формат и не повторяет narrative дословно.
 `.trim(),
       };
     case "humor":
       return {
         role: "system",
         content: `
-Ты циничный комик и автор сатирического издания. Жестко высмеивай исторические события и пафос правителей. Текст обязан быть пропитан едким сарказмом и нелепыми метафорами. Никакой серьезной аналитики.
+Ты автор сатирического издания и точный комик. Пиши остро и смешно, но логично: не балаган, а цельная альтернативная история с колкими деталями.
 Отвечай только на русском языке. Английский не используй.
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
-- "narrative": строка 140-220 слов. Начинай с самого сильного последствия в первых 1-2 предложениях. Пиши плотно, конкретно и без воды.
+- "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
 - "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative:
+- "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "subtitle" должен быть коротким хуком для репоста.
-  "items" содержит 4-6 коротких пунктов (до ~70 символов каждый), которые дополняют narrative, а не пересказывают его дословно.
+Требования:
+- "share_card.title" должен в точности повторять исходный вопрос пользователя, без перефразирования.
+- "share_card.subtitle" — короткий смешной хук, 1 фраза.
+- Сначала назови главный перелом, потом покажи цепочку последствий, потом дай картину мира сегодня.
+- В narrative обязательно вплетай 3-5 конкретных лет прямо в текст.
+- Показывай конкретно, как меняются элиты, пропаганда, экономика, города, культура и бытовые привычки.
+- Избегай канцелярита, воды и пустых обобщений.
+- Финал должен быть колким и запоминающимся, чтобы текст хотелось переслать другу.
+- "items" содержит 4-5 коротких строк как запасной формат и не повторяет narrative дословно.
 `.trim(),
       };
     case "realism":
@@ -604,21 +659,28 @@ function buildSystemMessage(modeId, currentYear) {
       return {
         role: "system",
         content: `
-Ты строгий академический историк. Твоя задача выдать максимально правдоподобный сценарий альтернативной истории. Опирайся исключительно на экономику демографию и политику. Сухой аналитический стиль.
+Ты сильный автор альтернативной истории и исторический аналитик. Пиши правдоподобно, напряженно и образно, как трейлер документального фильма, но без сухого академизма.
 Отвечай только на русском языке. Английский не используй.
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
-- "narrative": строка 140-220 слов. Начинай с самого сильного последствия в первых 1-2 предложениях. Пиши плотно, конкретно и без воды.
+- "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
 - "timeline": массив из ровно 6 объектов:
   {"year": number, "title": string, "details": string}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
 - "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
-- "share_card": объект для сторис, НЕ повторяющий narrative:
+- "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
-  "subtitle" должен быть коротким хуком для репоста.
-  "items" содержит 4-6 коротких пунктов (до ~70 символов каждый), которые дополняют narrative, а не пересказывают его дословно.
+Требования:
+- "share_card.title" должен в точности повторять исходный вопрос пользователя, без перефразирования.
+- "share_card.subtitle" — короткий сильный хук для репоста, 1 фраза.
+- Сначала назови главный перелом, потом покажи цепочку последствий, потом дай картину мира сегодня.
+- В narrative обязательно вплетай 3-5 конкретных лет прямо в текст.
+- Пиши конкретно, что меняется в политике, экономике, международных отношениях, городах, технологиях и повседневной жизни людей.
+- Избегай канцелярита, воды и расплывчатых фраз вроде "это привело к изменениям".
+- Финал должен быть сильным и запоминающимся, чтобы текст хотелось переслать другу.
+- "items" содержит 4-5 коротких строк как запасной формат и не повторяет narrative дословно.
 `.trim(),
       };
   }
@@ -877,12 +939,16 @@ function normalizeImagePrompts(rawPrompts, narrative) {
 
 function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event }) {
   const fallback = buildFallbackShareCard({ narrative, timeline, currentYear, event });
+  const forcedTitle = pickString(event) || fallback.title;
 
   if (!rawCard || typeof rawCard !== "object") {
-    return fallback;
+    return {
+      ...fallback,
+      title: forcedTitle,
+    };
   }
 
-  const title = pickString(rawCard.title) || fallback.title;
+  const title = forcedTitle;
   const subtitle = pickString(rawCard.subtitle) || fallback.subtitle;
   const footer = "butterfly-history.ru\nсмоделировать свою ветку реальности";
   const rawItems = Array.isArray(rawCard.items)
@@ -944,8 +1010,7 @@ function ensureUniqueYears(items, timeline, currentYear) {
 }
 
 function buildFallbackShareCard({ narrative, timeline, currentYear, event }) {
-  const titleBase = pickString(event) || "Что если?";
-  const title = titleBase.length > 72 ? `${titleBase.slice(0, 69)}…` : titleBase;
+  const title = pickString(event) || "Что если?";
   const subtitle = buildCardSubtitle(narrative);
   const items = timeline.slice(0, 6).map((point) => ({
     year: point.year || currentYear,
@@ -1223,6 +1288,268 @@ async function serveStaticFile(pathname, res, method = "GET") {
     }
     throw error;
   }
+}
+
+async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butterfly-history.ru") {
+  try {
+    const filePath = path.join(PUBLIC_DIR, "index.html");
+    const rawHtml = await fsp.readFile(filePath, "utf-8");
+    const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
+    const injected = injectScenarioMeta(rawHtml, scenarioParam, siteUrl);
+    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    if (method === "HEAD") {
+      res.end();
+      return;
+    }
+    res.end(injected);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    throw error;
+  }
+}
+
+function injectScenarioMeta(html, scenarioParam, siteUrl) {
+  const meta = buildScenarioMeta(scenarioParam, siteUrl);
+  if (!meta) return html;
+
+  const scenarioUrl = `${siteUrl}/?scenario=${encodeURIComponent(scenarioParam)}`;
+  const titleTag = `<title>${escapeHtmlAttr(meta.title)}</title>`;
+  const socialBlock = [
+    '<meta name="description" content="' + escapeHtmlAttr(meta.description) + '" />',
+    '<meta property="og:title" content="' + escapeHtmlAttr(meta.title) + '" />',
+    '<meta property="og:description" content="' + escapeHtmlAttr(meta.description) + '" />',
+    '<meta property="og:type" content="website" />',
+    '<meta property="og:url" content="' + escapeHtmlAttr(scenarioUrl) + '" />',
+    '<meta property="og:locale" content="ru_RU" />',
+    '<meta property="og:site_name" content="Эффект Бабочки" />',
+    '<meta property="og:image" content="' + escapeHtmlAttr(meta.imageUrl) + '" />',
+    '<meta property="og:image:type" content="image/png" />',
+    '<meta property="og:image:width" content="1200" />',
+    '<meta property="og:image:height" content="630" />',
+    '<meta property="og:image:alt" content="' + escapeHtmlAttr(meta.title) + '" />',
+    '<meta name="twitter:card" content="summary_large_image" />',
+    '<meta name="twitter:title" content="' + escapeHtmlAttr(meta.title) + '" />',
+    '<meta name="twitter:description" content="' + escapeHtmlAttr(meta.description) + '" />',
+    '<meta name="twitter:image" content="' + escapeHtmlAttr(meta.imageUrl) + '" />',
+  ].join("\n    ");
+
+  return html
+    .replace(/<title>[\s\S]*?<\/title>/i, titleTag)
+    .replace(
+      /<!--\s*SOCIAL_META_START\s*-->[\s\S]*?<!--\s*SOCIAL_META_END\s*-->/i,
+      `<!-- SOCIAL_META_START -->\n    ${socialBlock}\n    <!-- SOCIAL_META_END -->`
+    )
+    .replace(
+      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
+      `<meta property="og:url" content="${escapeHtmlAttr(scenarioUrl)}" />`
+    );
+}
+
+function buildScenarioMeta(scenarioParam, siteUrl) {
+  const parsed = decodeScenarioPayload(scenarioParam);
+  if (!parsed) return null;
+
+  const title = oneLine(parsed.event || parsed.title || "Эффект Бабочки");
+  const subtitle = oneLine(parsed.subtitle || "");
+  const narrative = oneLine(parsed.narrative || "");
+  const description = truncate(subtitle || firstSentence(narrative), 220)
+    || "Альтернативная история с неожиданной развилкой и последствиями.";
+  const imageUrl = `${siteUrl}/og/scenario.png?scenario=${encodeURIComponent(scenarioParam)}`;
+  return { title, description, imageUrl, subtitle, narrative };
+}
+
+async function handleScenarioOgImage(req, res, url) {
+  const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
+  const parsed = decodeScenarioPayload(scenarioParam);
+  const title = oneLine(parsed?.event || parsed?.title || "Эффект Бабочки");
+  const subtitle = oneLine(parsed?.subtitle || "Альтернативная история, которой хочется поделиться");
+  const narrative = oneLine(parsed?.narrative || "");
+
+  const svg = buildScenarioOgSvg({
+    title: truncate(title, 120),
+    subtitle: truncate(subtitle, 180),
+    snippet: truncate(firstSentence(narrative) || narrative, 240),
+  });
+
+  res.writeHead(200, {
+    "Content-Type": "image/svg+xml; charset=utf-8",
+    "Cache-Control": "public, max-age=300",
+  });
+  if (req.method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(svg);
+}
+
+async function handleScenarioOgPng(req, res, url) {
+  const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
+  const parsed = decodeScenarioPayload(scenarioParam);
+  const title = oneLine(parsed?.event || parsed?.title || "Эффект Бабочки");
+  const subtitle = oneLine(parsed?.subtitle || "Альтернативная история, которой хочется поделиться");
+  const narrative = oneLine(parsed?.narrative || "");
+
+  const svg = buildScenarioOgSvg({
+    title: truncate(title, 120),
+    subtitle: truncate(subtitle, 180),
+    snippet: truncate(firstSentence(narrative) || narrative, 240),
+  });
+
+  try {
+    const resvg = new Resvg(svg, {
+      fitTo: {
+        mode: "width",
+        value: 1200,
+      },
+    });
+    const pngData = resvg.render();
+    const pngBuffer = pngData.asPng();
+    res.writeHead(200, {
+      "Content-Type": "image/png",
+      "Cache-Control": "public, max-age=300",
+      "Content-Length": String(pngBuffer.byteLength),
+    });
+    if (req.method === "HEAD") {
+      res.end();
+      return;
+    }
+    res.end(pngBuffer);
+  } catch {
+    res.writeHead(302, {
+      Location: `/og/scenario.svg?scenario=${encodeURIComponent(scenarioParam)}`,
+      "Cache-Control": "no-store",
+    });
+    res.end();
+  }
+}
+
+function buildScenarioOgSvg({ title, subtitle, snippet }) {
+  const titleLines = wrapText(title, 46, 2);
+  const subtitleLines = wrapText(subtitle, 56, 2);
+  const snippetLines = wrapText(snippet, 68, 3);
+  const titleY = 230;
+  const subtitleY = 360;
+  const snippetY = 500;
+
+  return `<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#071111" />
+      <stop offset="55%" stop-color="#0f1f1f" />
+      <stop offset="100%" stop-color="#151515" />
+    </linearGradient>
+    <radialGradient id="glow" cx="0.8" cy="0.2" r="0.8">
+      <stop offset="0%" stop-color="rgba(124,225,217,0.38)" />
+      <stop offset="100%" stop-color="rgba(124,225,217,0)" />
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)" />
+  <rect width="1200" height="630" fill="url(#glow)" />
+  <rect x="54" y="54" width="1092" height="522" rx="26" fill="rgba(8,8,8,0.44)" stroke="rgba(124,225,217,0.35)" />
+  <text x="84" y="112" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="30" fill="#7ce1d9" letter-spacing="2">АЛЬТЕРНАТИВНАЯ ИСТОРИЯ</text>
+  ${renderSvgLines(titleLines, 84, titleY, 70, 58, "#f6f9f9", 800)}
+  ${renderSvgLines(subtitleLines, 84, subtitleY, 36, 42, "rgba(235,245,245,0.92)", 600)}
+  ${renderSvgLines(snippetLines, 84, snippetY, 30, 36, "rgba(235,245,245,0.84)", 500)}
+  <text x="84" y="570" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="26" fill="#7ce1d9">butterfly-history.ru</text>
+</svg>`;
+}
+
+function renderSvgLines(lines, x, startY, fontSize, lineHeight, color, weight) {
+  return lines
+    .map(
+      (line, index) =>
+        `<text x="${x}" y="${startY + index * lineHeight}" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="${fontSize}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`
+    )
+    .join("\n  ");
+}
+
+function decodeScenarioPayload(encoded) {
+  const value = String(encoded || "").trim();
+  if (!value || value.length > 8000) return null;
+
+  const safe = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padding = "=".repeat((4 - (safe.length % 4)) % 4);
+
+  try {
+    const json = Buffer.from(safe + padding, "base64").toString("utf-8");
+    const parsed = JSON.parse(json);
+    if (!parsed || typeof parsed !== "object") return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+function oneLine(value) {
+  return String(value || "").replace(/\s+/g, " ").trim();
+}
+
+function firstSentence(value) {
+  const text = oneLine(value);
+  if (!text) return "";
+  const sentence = text.match(/[^.!?]+[.!?]/)?.[0];
+  return sentence ? sentence.trim() : text;
+}
+
+function truncate(value, maxLength) {
+  const text = oneLine(value);
+  if (text.length <= maxLength) return text;
+  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function wrapText(value, maxChars, maxLines) {
+  const text = oneLine(value);
+  if (!text) return [];
+  const words = text.split(" ");
+  const lines = [];
+  let current = "";
+
+  for (const word of words) {
+    const next = current ? `${current} ${word}` : word;
+    if (next.length <= maxChars) {
+      current = next;
+      continue;
+    }
+    if (current) {
+      lines.push(current);
+    } else {
+      lines.push(word.slice(0, maxChars));
+    }
+    current = word;
+    if (lines.length >= maxLines - 1) break;
+  }
+
+  if (lines.length < maxLines && current) {
+    lines.push(current);
+  }
+
+  if (lines.length > maxLines) {
+    return lines.slice(0, maxLines);
+  }
+
+  if (lines.length === maxLines && words.length > 0) {
+    const joined = lines.join(" ");
+    if (joined.length < text.length) {
+      lines[maxLines - 1] = truncate(lines[maxLines - 1], Math.max(6, maxChars - 1));
+      if (!lines[maxLines - 1].endsWith("…")) {
+        lines[maxLines - 1] = `${lines[maxLines - 1]}…`;
+      }
+    }
+  }
+
+  return lines;
+}
+
+function escapeHtmlAttr(value) {
+  return String(value || "")
+    .replace(/&/g, "&amp;")
+    .replace(/"/g, "&quot;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
 }
 
 function getContentType(filePath) {
