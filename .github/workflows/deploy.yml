@@ -21,8 +21,19 @@ jobs:
             git reset --hard origin/main
             npm install
             test -f .env || { echo "Missing /root/butterfly/.env"; exit 1; }
-            test -f "/root/butterfly/telegram bot/.env" || { echo "Missing /root/butterfly/telegram bot/.env"; exit 1; }
-            pm2 startOrReload ecosystem.config.cjs --update-env
+
+            pm2 startOrReload ecosystem.config.cjs --only butterfly --update-env
+
+            if [ -f "/root/butterfly/telegram bot/.env" ] || grep -Eq '^[[:space:]]*BOT_TOKEN=' .env; then
+              echo "Telegram bot config found, reloading butterfly-bot"
+              cd "/root/butterfly/telegram bot"
+              npm install
+              cd /root/butterfly
+              pm2 startOrReload ecosystem.config.cjs --only butterfly-bot --update-env
+            else
+              echo "Telegram bot config not found, skipping butterfly-bot reload"
+            fi
+
             pm2 save
       - name: Notify Telegram
         if: always()
