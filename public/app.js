@@ -1096,17 +1096,78 @@ async function openShareCardImage(target, card, format) {
 
   try {
     const asset = await renderShareCardAsset(target, format);
-    if (!asset?.dataUrl) {
+    if (!asset?.blob && !asset?.dataUrl) {
       return false;
     }
 
-    const dataUrl = asset.dataUrl;
+    const filename = buildShareCardFilename(card, format);
+    const file = createShareCardFile(asset.blob, filename);
+
+    if (shouldUseNativeCardShare() && (await shareCardFile(file, card))) {
+      return true;
+    }
+
+    const objectUrl = file ? URL.createObjectURL(file) : asset.dataUrl;
+    if (!objectUrl) {
+      return false;
+    }
+
     const link = document.createElement("a");
-    link.href = dataUrl;
-    link.download = buildShareCardFilename(card, format);
+    link.href = objectUrl;
+    link.download = filename;
+    link.rel = "noopener";
     document.body.append(link);
     link.click();
     link.remove();
+
+    if (file) {
+      window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function createShareCardFile(blob, filename) {
+  if (!(blob instanceof Blob) || typeof File !== "function") {
+    return null;
+  }
+
+  try {
+    return new File([blob], filename, { type: blob.type || "image/png" });
+  } catch {
+    return null;
+  }
+}
+
+function shouldUseNativeCardShare() {
+  if (typeof window.matchMedia !== "function") {
+    return false;
+  }
+
+  return (
+    window.matchMedia("(max-width: 760px)").matches ||
+    window.matchMedia("(pointer: coarse)").matches
+  );
+}
+
+async function shareCardFile(file, card) {
+  if (!(file instanceof File) || typeof navigator.share !== "function") {
+    return false;
+  }
+
+  const shareData = {
+    files: [file],
+    title: card?.title || t("fallbackCardTitle"),
+  };
+
+  if (typeof navigator.canShare === "function" && !navigator.canShare(shareData)) {
+    return false;
+  }
+
+  try {
+    await navigator.share(shareData);
     return true;
   } catch {
     return false;
@@ -1185,7 +1246,7 @@ async function renderShareCardAsset(target, format) {
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     return {
       blob,
-      dataUrl: canvas.toDataURL("image/png"),
+      dataUrl: blob ? null : canvas.toDataURL("image/png"),
     };
   } finally {
     host.remove();
