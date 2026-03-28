@@ -258,6 +258,11 @@ const CARD_CAPTURE_SIZES = {
   square: { width: 1200, height: 1200 },
   landscape: { width: 1600, height: 900 },
 };
+const CARD_CAPTURE_LAYOUT_SIZES = {
+  portrait: { width: 540, height: 960 },
+  square: { width: 720, height: 720 },
+  landscape: { width: 960, height: 540 },
+};
 
 
 initModeTabs();
@@ -1207,13 +1212,10 @@ async function renderShareCardAsset(target, format) {
 
   const captureFormat = resolveCardFormat(format);
   const exportSize = CARD_CAPTURE_SIZES[captureFormat] || CARD_CAPTURE_SIZES.portrait;
-  const rect = target.getBoundingClientRect();
-  const sourceWidth = Math.max(1, Math.round(rect.width || exportSize.width));
-  const sourceHeight = Math.max(1, Math.round(rect.height || exportSize.height));
-  const qualityScale = Math.max(
-    1,
-    Math.min(exportSize.width / sourceWidth, exportSize.height / sourceHeight)
-  );
+  const layoutSize = CARD_CAPTURE_LAYOUT_SIZES[captureFormat] || exportSize;
+  const sourceWidth = Math.max(1, Math.round(layoutSize.width));
+  const sourceHeight = Math.max(1, Math.round(layoutSize.height));
+  const qualityScale = Math.max(1, exportSize.width / sourceWidth);
 
   const host = document.createElement("div");
   host.style.position = "fixed";
@@ -1228,7 +1230,7 @@ async function renderShareCardAsset(target, format) {
   clone.style.height = `${sourceHeight}px`;
   clone.style.maxWidth = "none";
   clone.style.maxHeight = "none";
-  clone.style.aspectRatio = "auto";
+  clone.style.aspectRatio = `${sourceWidth} / ${sourceHeight}`;
 
   host.append(clone);
   document.body.append(host);
@@ -1240,8 +1242,8 @@ async function renderShareCardAsset(target, format) {
       useCORS: true,
       width: sourceWidth,
       height: sourceHeight,
-      windowWidth: window.innerWidth,
-      windowHeight: window.innerHeight,
+      windowWidth: sourceWidth,
+      windowHeight: sourceHeight,
     });
     const blob = await new Promise((resolve) => canvas.toBlob(resolve, "image/png"));
     return {
