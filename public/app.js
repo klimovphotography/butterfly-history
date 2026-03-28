@@ -4,66 +4,254 @@ const button = document.getElementById("submit-btn");
 const messages = document.getElementById("messages");
 const randomButton = document.getElementById("random-btn");
 const providerPill = document.getElementById("provider-pill");
+const languageButton = document.getElementById("language-toggle");
 const modeTabs = document.querySelectorAll(".mode-tab");
 
 const CURRENT_YEAR = new Date().getFullYear();
 window.__SCENARIO_PAYLOAD__ = typeof window.__SCENARIO_PAYLOAD__ === "string"
   ? window.__SCENARIO_PAYLOAD__
   : "";
-const QUICK_START_EXAMPLES = [
-  "Что если Атлантида не затонула а превратилась в технологическую сверхдержаву?",
-  "Что если Гитлер поступил в Венскую академию художеств?",
-  "Что если вода на планете начала наделять людей случайными мутациями?",
-  "Что если Рунет полностью изолировали от глобальной сети в 2025 году?",
-  "Что если декабристы успешно захватили власть в 1825 году?",
-  "Что если телепатия внезапно появилась у каждого десятого человека на планете?",
-  "Что если Россия не продала Аляску Соединенным Штатам?",
-  "Что если Карибский кризис перерос в обмен ядерными ударами?",
-  "Что если Тунгусский метеорит был потерпевшим крушение звездным крейсером?",
-  "Что если Ленин прожил на двадцать лет дольше?",
-  "Что если Чума уничтожила девяносто процентов населения Европы вместо трети?",
-  "Что если Юрий Хованский построил успешную политическую карьеру в Госдуме?",
-  "Что если Петр I не стал строить Петербург и оставил столицу в Москве?",
-  "Что если Большой адронный коллайдер вызвал глобальную аномалию при запуске?",
-  "Что если тайное мировое правительство решило сократить население планеты до золотого миллиарда?",
-  "Что если христианство так и осталось локальной сектой на Ближнем Востоке?",
-  "Что если Виктор Цой не погиб в автокатастрофе в 1990 году?",
-  "Что если магия всегда существовала и стала главной наукой вместо физики?",
-  "Что если советский интернет ОГАС академика Глушкова был реализован?",
-  "Что если князь Владимир выбрал ислам или католичество вместо православного христианства?",
-  "Что если Белое движение победило в Гражданской войне?",
-  "Что если ИИ обрел самосознание в 2025 году?",
-  "Что если неандертальцы победили кроманьонцев в эволюционной гонке?",
-  "Что если Дональд Трамп проиграл выборы Хиллари Клинтон в 2016 году?",
-  "Что если Канье Уэст реально выиграл президентские выборы в США?",
-  "Что если монголо татарское нашествие обошло стороной русские княжества?",
-  "Что если Бермудский треугольник оказался работающим порталом в параллельное измерение?",
-  "Что если митинги на Болотной площади в 2011 году привели к смене власти?",
-  "Что если гравитация на Земле внезапно уменьшилась в два раза?",
-  "Что если Иван Грозный не убивал своего сына и династия Рюриковичей не прервалась?",
-  "Что если мы живем в матрице и в 1999 году произошел первый массовый сбой системы?",
-  "Что если ученые нашли работающий способ обратить биологическое старение вспять в 2015 году?",
-  "Что если динозавры не вымерли?",
-  "Что если легенды о вампирах основаны на генетической мутации правящих элит?",
-  "Что если в 2020 году вместо Covid случилась глобальная эпидемия зомби?",
-  "Что если Смутное время на Руси закончилось полным вхождением страны в состав Речи Посполитой?",
-];
+const STORAGE_LANGUAGE_KEY = "bh_language";
+const QUICK_START_EXAMPLES = {
+  ru: [
+    "Что если Атлантида не затонула а превратилась в технологическую сверхдержаву?",
+    "Что если Гитлер поступил в Венскую академию художеств?",
+    "Что если вода на планете начала наделять людей случайными мутациями?",
+    "Что если Рунет полностью изолировали от глобальной сети в 2025 году?",
+    "Что если декабристы успешно захватили власть в 1825 году?",
+    "Что если телепатия внезапно появилась у каждого десятого человека на планете?",
+    "Что если Россия не продала Аляску Соединенным Штатам?",
+    "Что если Карибский кризис перерос в обмен ядерными ударами?",
+    "Что если Тунгусский метеорит был потерпевшим крушение звездным крейсером?",
+    "Что если Ленин прожил на двадцать лет дольше?",
+    "Что если Чума уничтожила девяносто процентов населения Европы вместо трети?",
+    "Что если Юрий Хованский построил успешную политическую карьеру в Госдуме?",
+    "Что если Петр I не стал строить Петербург и оставил столицу в Москве?",
+    "Что если Большой адронный коллайдер вызвал глобальную аномалию при запуске?",
+    "Что если тайное мировое правительство решило сократить население планеты до золотого миллиарда?",
+    "Что если христианство так и осталось локальной сектой на Ближнем Востоке?",
+    "Что если Виктор Цой не погиб в автокатастрофе в 1990 году?",
+    "Что если магия всегда существовала и стала главной наукой вместо физики?",
+    "Что если советский интернет ОГАС академика Глушкова был реализован?",
+    "Что если князь Владимир выбрал ислам или католичество вместо православного христианства?",
+    "Что если Белое движение победило в Гражданской войне?",
+    "Что если ИИ обрел самосознание в 2025 году?",
+    "Что если неандертальцы победили кроманьонцев в эволюционной гонке?",
+    "Что если Дональд Трамп проиграл выборы Хиллари Клинтон в 2016 году?",
+    "Что если Канье Уэст реально выиграл президентские выборы в США?",
+    "Что если монголо татарское нашествие обошло стороной русские княжества?",
+    "Что если Бермудский треугольник оказался работающим порталом в параллельное измерение?",
+    "Что если митинги на Болотной площади в 2011 году привели к смене власти?",
+    "Что если гравитация на Земле внезапно уменьшилась в два раза?",
+    "Что если Иван Грозный не убивал своего сына и династия Рюриковичей не прервалась?",
+    "Что если мы живем в матрице и в 1999 году произошел первый массовый сбой системы?",
+    "Что если ученые нашли работающий способ обратить биологическое старение вспять в 2015 году?",
+    "Что если динозавры не вымерли?",
+    "Что если легенды о вампирах основаны на генетической мутации правящих элит?",
+    "Что если в 2020 году вместо Covid случилась глобальная эпидемия зомби?",
+    "Что если Смутное время на Руси закончилось полным вхождением страны в состав Речи Посполитой?",
+  ],
+  en: [
+    "What if Atlantis never sank and became a technological superpower?",
+    "What if Hitler had been admitted to the Vienna Academy of Fine Arts?",
+    "What if telepathy suddenly appeared in every tenth person on Earth?",
+    "What if Russia had never sold Alaska to the United States?",
+    "What if the Cuban Missile Crisis had escalated into a nuclear exchange?",
+    "What if Lenin had lived twenty years longer?",
+    "What if the Black Death had wiped out ninety percent of Europe?",
+    "What if Peter the Great had kept the capital in Moscow?",
+    "What if the Large Hadron Collider had triggered a global anomaly at launch?",
+    "What if Christianity had remained a local sect in the Middle East?",
+    "What if Viktor Tsoi had not died in 1990?",
+    "What if OGAS, the Soviet internet project, had been implemented?",
+    "What if the White Movement had won the Russian Civil War?",
+    "What if AI became self-aware in 2025?",
+    "What if Neanderthals had won the evolutionary race?",
+    "What if gravity on Earth suddenly dropped by half?",
+    "What if dinosaurs had never gone extinct?",
+    "What if a global zombie epidemic replaced COVID in 2020?",
+  ],
+};
+const SHARE_CARD_CTA = {
+  ru: "смоделировать свою ветку реальности",
+  en: "model your own alternate timeline",
+};
+const MODE_LABELS = {
+  ru: {
+    realism: "Реализм",
+    dark: "Мрачная хроника",
+    prosperity: "Эпоха процветания",
+    madness: "Безумие",
+    humor: "Юмор",
+  },
+  en: {
+    realism: "Realism",
+    dark: "Dark Chronicle",
+    prosperity: "Age of Prosperity",
+    madness: "Madness",
+    humor: "Humor",
+  },
+};
+const TRANSLATIONS = {
+  ru: {
+    pageTitle: "Эффект Бабочки",
+    heroEyebrow: "Альтернативная история",
+    heroTitle: "Эффект Бабочки",
+    heroSubtitle:
+      "Напишите реальное историческое событие, а ИИ построит гипотезу: что было бы, если все пошло иначе.",
+    homeAria: "Главная",
+    eventLabel: "Историческое событие",
+    eventPlaceholder:
+      "Например: Что если Карибский кризис в 1962 году не удалось бы деэскалировать?",
+    randomButton: "Рандомный сценарий",
+    randomAria: "Случайный сценарий быстрого старта",
+    randomTitle: "Случайный сценарий",
+    languageButton: "Язык: RU",
+    languageAria: "Переключить язык на английский",
+    modeTabsAria: "Режим генерации",
+    modeRealism: "Реализм",
+    modeDark: "Мрачная хроника",
+    modeProsperity: "Эпоха процветания",
+    modeMadness: "Безумие",
+    modeHumor: "Юмор",
+    submitIdle: "Смоделировать",
+    submitBusy: "Думаю...",
+    chatWindowAria: "Окно чата",
+    donateEyebrow: "Поддержать проект",
+    donateTitle: "Сделайте донат, если вам понравилась история",
+    donateNoteTop: "В новой версии планируется больше визуала и глубины. Донаты пойдут на:",
+    donateItem1: "генерацию исторических фото и иллюстраций",
+    donateItem2: "продвинутые «мозги» для более точных сценариев",
+    donateNoteBottom:
+      "Это разовый безопасный платеж через CloudTips. Любая сумма помогает ускорять развитие проекта и делать сценарии глубже.",
+    donateCta: "Поддержать донатом",
+    legalNote: "Важно: это творческая историческая гипотеза, а не установленные факты.",
+    loadingScenario: "Моделирую альтернативную ветку...",
+    errorPrefix: "Ошибка",
+    unknownError: "неизвестная ошибка.",
+    parseError: "Не удалось разобрать ответ ИИ.",
+    networkError: "Ошибка сети. Проверьте, что сервер запущен.",
+    aiBadge: "ИИ",
+    userBadge: "Вы",
+    formatAuto: "Авто",
+    openPng: "Открыть PNG",
+    ready: "Готово",
+    failed: "Не вышло",
+    cardEyebrow: "Что если?",
+    cardEmptyNarrative: "Гипотеза готова, но текст оказался пустым.",
+    popupTitle: "Карточка сценария",
+    popupAlt: "Карточка сценария",
+    fallbackCardTitle: "Что если?",
+    fallbackCardPoint: "Ключевой поворот истории.",
+    fallbackCardFinal: "Финальный эффект захватывает современность.",
+    fallbackCardSubtitle: "Хроника альтернативного перелома — коротко и дерзко.",
+    stageLabel: "Этап",
+    timelineEarlyTitle: "Ранний перелом",
+    timelineEarlyDetails: "Начинаются первые изменения.",
+    timelineTrendTitle: "Закрепление",
+    timelineTrendDetails: "Новые процессы становятся устойчивыми.",
+    timelineShiftTitle: "Институциональный сдвиг",
+    timelineShiftDetails: "Изменения входят в норму.",
+    timelineGlobalTitle: "Глобальный эффект",
+    timelineGlobalDetails: "Изменения влияют на международный баланс.",
+    timelineEchoTitle: "Эхо перемен",
+    timelineEchoDetails: "Новое поколение живет иначе.",
+    timelineTodayTitle: "Сегодня",
+    timelineTodayDetails: "Формируется альтернативная современность.",
+    branch1: "Усилить международные союзы",
+    branch2: "Сделать ставку на технологический рывок",
+    branch3: "Сфокусироваться на внутренних реформах",
+    imagePromptFallback: "Иллюстрация альтернативной истории",
+    narrativeIncomplete: "Гипотеза построена, но текстовое описание оказалось неполным.",
+    narrativeJson: "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.",
+  },
+  en: {
+    pageTitle: "Butterfly Effect",
+    heroEyebrow: "Alternate History",
+    heroTitle: "Butterfly Effect",
+    heroSubtitle:
+      "Describe a real historical event, and AI will build a hypothesis of how the world could have changed.",
+    homeAria: "Home",
+    eventLabel: "Historical Event",
+    eventPlaceholder:
+      "For example: What if the Cuban Missile Crisis in 1962 had not been de-escalated?",
+    randomButton: "Random Scenario",
+    randomAria: "Random quick-start scenario",
+    randomTitle: "Random scenario",
+    languageButton: "Language: EN",
+    languageAria: "Switch language to Russian",
+    modeTabsAria: "Generation mode",
+    modeRealism: "Realism",
+    modeDark: "Dark Chronicle",
+    modeProsperity: "Age of Prosperity",
+    modeMadness: "Madness",
+    modeHumor: "Humor",
+    submitIdle: "Simulate",
+    submitBusy: "Thinking...",
+    chatWindowAria: "Chat window",
+    donateEyebrow: "Support The Project",
+    donateTitle: "Make a donation if you enjoyed the story",
+    donateNoteTop: "The new version will include deeper visuals and richer scenarios. Donations go to:",
+    donateItem1: "generation of historical photos and illustrations",
+    donateItem2: "more advanced AI models for higher-quality scenarios",
+    donateNoteBottom:
+      "This is a one-time secure payment via CloudTips. Any amount helps speed up development and improve scenario depth.",
+    donateCta: "Support with a donation",
+    legalNote: "Important: this is a creative historical hypothesis, not established fact.",
+    loadingScenario: "Modeling an alternate timeline...",
+    errorPrefix: "Error",
+    unknownError: "unknown error.",
+    parseError: "Failed to parse the AI response.",
+    networkError: "Network error. Check that the server is running.",
+    aiBadge: "AI",
+    userBadge: "You",
+    formatAuto: "Auto",
+    openPng: "Open PNG",
+    ready: "Done",
+    failed: "Failed",
+    cardEyebrow: "What if?",
+    cardEmptyNarrative: "The hypothesis is ready, but the text came back empty.",
+    popupTitle: "Scenario Card",
+    popupAlt: "Scenario card",
+    fallbackCardTitle: "What if?",
+    fallbackCardPoint: "Key turning point in history.",
+    fallbackCardFinal: "The final effect reshapes the present day.",
+    fallbackCardSubtitle: "A sharp snapshot of an alternate turning point.",
+    stageLabel: "Phase",
+    timelineEarlyTitle: "Early Breakpoint",
+    timelineEarlyDetails: "The first changes begin.",
+    timelineTrendTitle: "Trend Consolidation",
+    timelineTrendDetails: "New dynamics become stable.",
+    timelineShiftTitle: "Institutional Shift",
+    timelineShiftDetails: "Changes become the new normal.",
+    timelineGlobalTitle: "Global Impact",
+    timelineGlobalDetails: "Shifts alter the international balance.",
+    timelineEchoTitle: "Echo Of Change",
+    timelineEchoDetails: "A new generation lives differently.",
+    timelineTodayTitle: "Today",
+    timelineTodayDetails: "An alternate present takes shape.",
+    branch1: "Strengthen international alliances",
+    branch2: "Double down on a technological leap",
+    branch3: "Focus on internal reforms",
+    imagePromptFallback: "Illustration of alternate history",
+    narrativeIncomplete: "The hypothesis was generated, but the text description was incomplete.",
+    narrativeJson: "The hypothesis was generated, but the model returned service JSON instead of clean text.",
+  },
+};
 
 let isLoading = false;
 let activeMode = "realism";
+let currentLanguage = normalizeLanguage(
+  window.localStorage?.getItem(STORAGE_LANGUAGE_KEY) ||
+    document.documentElement.lang ||
+    "ru"
+);
 const shareUrlCache = new Map();
-const MODE_LABELS = {
-  realism: "Реализм",
-  dark: "Мрачная хроника",
-  prosperity: "Эпоха процветания",
-  madness: "Безумие",
-  humor: "Юмор",
-};
 const CARD_FORMAT_OPTIONS = [
-  { id: "auto", label: "Авто" },
-  { id: "portrait", label: "9:16" },
-  { id: "square", label: "1:1" },
-  { id: "landscape", label: "16:9" },
+  { id: "auto" },
+  { id: "portrait" },
+  { id: "square" },
+  { id: "landscape" },
 ];
 const CARD_CAPTURE_SIZES = {
   portrait: { width: 1080, height: 1920 },
@@ -73,6 +261,8 @@ const CARD_CAPTURE_SIZES = {
 
 
 initModeTabs();
+initLanguageSwitcher();
+setLanguage(currentLanguage, { persist: false });
 
 loadProviderMeta();
 void hydrateScenarioFromUrl();
@@ -94,11 +284,19 @@ form.addEventListener("submit", async (event) => {
 
 if (randomButton) {
   randomButton.addEventListener("click", () => {
-    if (!QUICK_START_EXAMPLES.length) return;
+    const examples = getQuickStartExamples();
+    if (!examples.length) return;
     const eventText =
-      QUICK_START_EXAMPLES[Math.floor(Math.random() * QUICK_START_EXAMPLES.length)];
+      examples[Math.floor(Math.random() * examples.length)];
     input.value = eventText;
     input.focus();
+  });
+}
+
+if (languageButton) {
+  languageButton.addEventListener("click", () => {
+    const nextLanguage = currentLanguage === "ru" ? "en" : "ru";
+    setLanguage(nextLanguage);
   });
 }
 
@@ -114,13 +312,14 @@ async function startScenario(rawText) {
     branch: "",
     context: [],
     mode: activeMode,
+    language: currentLanguage,
   });
 }
 
 async function requestScenario(payload) {
   isLoading = true;
   setUiBusy(true);
-  const loadingId = addTextMessage("assistant", "Моделирую альтернативную ветку...");
+  const loadingId = addTextMessage("assistant", t("loadingScenario"));
 
   try {
     const response = await fetch("/api/alt-history", {
@@ -133,24 +332,195 @@ async function requestScenario(payload) {
     removeMessage(loadingId);
 
     if (!response.ok) {
-      addTextMessage("assistant", `Ошибка: ${data.error || "неизвестная ошибка."}`);
+      addTextMessage("assistant", `${t("errorPrefix")}: ${data.error || t("unknownError")}`);
       return;
     }
 
     const scenario = normalizeScenario(data);
     if (!scenario) {
-      addTextMessage("assistant", "Не удалось разобрать ответ ИИ.");
+      addTextMessage("assistant", t("parseError"));
       return;
     }
 
     addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
   } catch {
     removeMessage(loadingId);
-    addTextMessage("assistant", "Ошибка сети. Проверьте, что сервер запущен.");
+    addTextMessage("assistant", t("networkError"));
   } finally {
     isLoading = false;
     setUiBusy(false);
     input.focus();
+  }
+}
+
+function normalizeLanguage(value) {
+  return String(value || "").toLowerCase() === "en" ? "en" : "ru";
+}
+
+function t(key) {
+  const active = TRANSLATIONS[currentLanguage] || TRANSLATIONS.ru;
+  return active[key] || TRANSLATIONS.ru[key] || key;
+}
+
+function setLanguage(nextLanguage, options = {}) {
+  const { persist = true } = options;
+  currentLanguage = normalizeLanguage(nextLanguage);
+
+  if (persist) {
+    try {
+      window.localStorage?.setItem(STORAGE_LANGUAGE_KEY, currentLanguage);
+    } catch {
+      // Ignore private mode/localStorage errors.
+    }
+  }
+
+  applyTranslations();
+}
+
+function initLanguageSwitcher() {
+  if (!languageButton) return;
+  languageButton.classList.toggle("is-en", currentLanguage === "en");
+}
+
+function getQuickStartExamples() {
+  return QUICK_START_EXAMPLES[currentLanguage] || QUICK_START_EXAMPLES.ru;
+}
+
+function getShareCardCta() {
+  return SHARE_CARD_CTA[currentLanguage] || SHARE_CARD_CTA.ru;
+}
+
+function getShareCardFooter() {
+  return `butterfly-history.ru\n${getShareCardCta()}`;
+}
+
+function getCardFormatLabel(formatId) {
+  if (formatId === "auto") return t("formatAuto");
+  if (formatId === "portrait") return "9:16";
+  if (formatId === "square") return "1:1";
+  if (formatId === "landscape") return "16:9";
+  return formatId;
+}
+
+function setTextById(id, value) {
+  const element = document.getElementById(id);
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+function setAttrById(id, attribute, value) {
+  const element = document.getElementById(id);
+  if (element) {
+    element.setAttribute(attribute, value);
+  }
+}
+
+function applyTranslations() {
+  document.documentElement.lang = currentLanguage;
+  document.title = t("pageTitle");
+
+  setTextById("hero-eyebrow", t("heroEyebrow"));
+  setTextById("hero-title-text", t("heroTitle"));
+  setTextById("hero-subtitle", t("heroSubtitle"));
+  setTextById("event-label", t("eventLabel"));
+  setTextById("donate-eyebrow", t("donateEyebrow"));
+  setTextById("donate-title", t("donateTitle"));
+  setTextById("donate-note-top", t("donateNoteTop"));
+  setTextById("donate-item-1", t("donateItem1"));
+  setTextById("donate-item-2", t("donateItem2"));
+  setTextById("donate-note-bottom", t("donateNoteBottom"));
+  setTextById("donate-cta", t("donateCta"));
+  setTextById("legal-note", t("legalNote"));
+
+  setAttrById("event-input", "placeholder", t("eventPlaceholder"));
+  setAttrById("chat-window", "aria-label", t("chatWindowAria"));
+  setAttrById("mode-tabs", "aria-label", t("modeTabsAria"));
+
+  const homeLink = document.querySelector(".hero-logo");
+  if (homeLink) {
+    homeLink.setAttribute("aria-label", t("homeAria"));
+  }
+
+  if (randomButton) {
+    randomButton.textContent = t("randomButton");
+    randomButton.setAttribute("aria-label", t("randomAria"));
+    randomButton.setAttribute("title", t("randomTitle"));
+  }
+
+  if (languageButton) {
+    languageButton.textContent = t("languageButton");
+    languageButton.setAttribute("aria-label", t("languageAria"));
+    languageButton.setAttribute("title", t("languageAria"));
+    languageButton.classList.toggle("is-en", currentLanguage === "en");
+  }
+
+  for (const tab of modeTabs) {
+    const mode = tab.dataset.mode || "realism";
+    if (mode === "realism") tab.textContent = t("modeRealism");
+    if (mode === "dark") tab.textContent = t("modeDark");
+    if (mode === "prosperity") tab.textContent = t("modeProsperity");
+    if (mode === "madness") tab.textContent = t("modeMadness");
+    if (mode === "humor") tab.textContent = t("modeHumor");
+  }
+
+  button.textContent = isLoading ? t("submitBusy") : t("submitIdle");
+  syncDynamicTextLanguage();
+}
+
+function syncDynamicTextLanguage() {
+  for (const article of messages.querySelectorAll(".scenario-result")) {
+    const modeId = article.dataset.modeId || activeMode;
+    const shareMode = article.querySelector(".share-card-mode");
+    if (shareMode) {
+      shareMode.textContent = getModeLabel(modeId);
+    }
+  }
+
+  for (const article of messages.querySelectorAll(".message")) {
+    const badge = article.querySelector(".badge");
+    if (!badge) continue;
+
+    if (article.classList.contains("user")) {
+      badge.textContent = t("userBadge");
+      continue;
+    }
+
+    if (article.classList.contains("scenario-result")) {
+      const modeId = article.dataset.modeId || activeMode;
+      const modeLabel = getModeLabel(modeId);
+      const shareMode = article.querySelector(".share-card-mode");
+      if (shareMode) {
+        shareMode.textContent = modeLabel;
+      } else {
+        badge.textContent = `${t("aiBadge")} — ${modeLabel}`;
+      }
+      continue;
+    }
+
+    badge.textContent = t("aiBadge");
+  }
+
+  for (const eyebrow of document.querySelectorAll(".share-card-eyebrow")) {
+    eyebrow.textContent = t("cardEyebrow");
+  }
+
+  for (const cta of document.querySelectorAll(".share-card-cta")) {
+    cta.textContent = getShareCardCta();
+  }
+
+  for (const buttonElement of document.querySelectorAll(".share-card-download")) {
+    const htmlButton = /** @type {HTMLButtonElement} */ (buttonElement);
+    const isTemporaryLabel = Boolean(htmlButton._labelResetTimer);
+    htmlButton.dataset.originalLabel = t("openPng");
+    if (!isTemporaryLabel) {
+      htmlButton.textContent = t("openPng");
+    }
+  }
+
+  for (const buttonElement of document.querySelectorAll(".share-card-control[data-format-id]")) {
+    const formatButton = /** @type {HTMLButtonElement} */ (buttonElement);
+    formatButton.textContent = getCardFormatLabel(formatButton.dataset.formatId || "");
   }
 }
 
@@ -199,21 +569,31 @@ async function loadProviderMeta() {
 
 function setUiBusy(state) {
   button.disabled = state;
-  button.textContent = state ? "Думаю..." : "Смоделировать";
+  button.textContent = state ? t("submitBusy") : t("submitIdle");
   if (randomButton) {
     randomButton.disabled = state;
+  }
+  if (languageButton) {
+    languageButton.disabled = state;
   }
   for (const tab of modeTabs) {
     tab.disabled = state;
   }
 }
 
+function getModeLabel(modeId) {
+  const labels = MODE_LABELS[currentLanguage] || MODE_LABELS.ru;
+  const fallbackLabels = MODE_LABELS.ru;
+  return labels[modeId] || fallbackLabels[modeId] || fallbackLabels.realism;
+}
+
 function addScenarioMessage(scenario, options = {}) {
   const modeId = options.mode || scenario.mode || activeMode;
-  const modeLabel = MODE_LABELS[modeId] || MODE_LABELS[activeMode] || "Реализм";
+  const modeLabel = getModeLabel(modeId);
   const article = document.createElement("article");
   article.className = "message assistant scenario-result";
   article.dataset.id = crypto.randomUUID();
+  article.dataset.modeId = modeId;
 
   if (scenario.shareCard) {
     const sharePayload = {
@@ -233,7 +613,7 @@ function addScenarioMessage(scenario, options = {}) {
   } else {
     const badge = document.createElement("div");
     badge.className = "badge";
-    badge.textContent = `ИИ — ${modeLabel}`;
+    badge.textContent = `${t("aiBadge")} — ${modeLabel}`;
     const narrative = document.createElement("p");
     narrative.className = "body";
     narrative.textContent = scenario.narrative;
@@ -287,7 +667,8 @@ function buildShareCard(payload) {
     const formatButton = document.createElement("button");
     formatButton.type = "button";
     formatButton.className = "share-card-control";
-    formatButton.textContent = option.label;
+    formatButton.dataset.formatId = option.id;
+    formatButton.textContent = getCardFormatLabel(option.id);
     formatButton.setAttribute("aria-pressed", option.id === selectedFormat ? "true" : "false");
     formatButton.addEventListener("click", () => {
       selectedFormat = option.id;
@@ -300,11 +681,12 @@ function buildShareCard(payload) {
   const openButton = document.createElement("button");
   openButton.type = "button";
   openButton.className = "share-card-control share-card-download";
-  openButton.textContent = "Открыть PNG";
+  openButton.textContent = t("openPng");
+  openButton.dataset.i18nKey = "openPng";
   openButton.addEventListener("click", async () => {
     const format = frame.dataset.format || resolveCardFormat(selectedFormat);
     const opened = await openShareCardImage(frame, card, format);
-    setTemporaryButtonLabel(openButton, opened ? "Готово" : "Не вышло");
+    setTemporaryButtonLabel(openButton, opened ? t("ready") : t("failed"));
   });
 
   actionGroup.append(openButton);
@@ -329,7 +711,7 @@ function buildShareCardFrame(payload, format) {
 
   const eyebrow = document.createElement("p");
   eyebrow.className = "share-card-eyebrow";
-  eyebrow.textContent = "Что если?";
+  eyebrow.textContent = t("cardEyebrow");
 
   const mode = document.createElement("span");
   mode.className = "share-card-mode";
@@ -400,7 +782,7 @@ function resolveCardFormat(selectedFormat) {
 function buildStoryParagraphs(narrative, format) {
   const text = String(narrative || "").replace(/\r/g, "").trim();
   if (!text) {
-    return ["Гипотеза готова, но текст оказался пустым."];
+    return [t("cardEmptyNarrative")];
   }
 
   const normalized = text.replace(/[ \t]+/g, " ");
@@ -545,6 +927,7 @@ function extractLeadSentence(narrative) {
 function buildScenarioHash(payload) {
   const data = {
     v: 1,
+    lang: currentLanguage,
     event: String(payload?.event || payload?.card?.title || "").trim(),
     mode: String(payload?.modeId || activeMode || "realism").trim(),
     title: String(payload?.card?.title || "").trim(),
@@ -615,6 +998,8 @@ async function hydrateScenarioFromUrl() {
         : "";
   const event = eventCandidate;
   const modeId = typeof parsed.mode === "string" ? parsed.mode.trim() : "realism";
+  const parsedLanguage = normalizeLanguage(parsed.lang || parsed.language || currentLanguage);
+  setLanguage(parsedLanguage, { persist: true });
   const narrative = sanitizeNarrativeText(parsed.narrative || "");
   if (!narrative) return;
 
@@ -624,7 +1009,7 @@ async function hydrateScenarioFromUrl() {
       title: parsed.title,
       subtitle: parsed.subtitle,
       items: [],
-      footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
+      footer: getShareCardFooter(),
     },
     narrative,
     timeline,
@@ -716,46 +1101,12 @@ async function openShareCardImage(target, card, format) {
     }
 
     const dataUrl = asset.dataUrl;
-    const win = window.open();
-    if (win) {
-      win.document.write(`<!doctype html>
-<html lang="ru">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <title>Карточка сценария</title>
-    <style>
-      html, body {
-        margin: 0;
-        min-height: 100%;
-        background: #060606;
-      }
-      body {
-        display: flex;
-        justify-content: center;
-        padding: 10px;
-      }
-      img {
-        display: block;
-        width: auto;
-        max-width: 100%;
-        height: auto;
-      }
-    </style>
-  </head>
-  <body>
-    <img src="${dataUrl}" alt="Карточка сценария" />
-  </body>
-</html>`);
-      win.document.close();
-    } else {
-      const link = document.createElement("a");
-      link.href = dataUrl;
-      link.download = buildShareCardFilename(card, format);
-      document.body.append(link);
-      link.click();
-      link.remove();
-    }
+    const link = document.createElement("a");
+    link.href = dataUrl;
+    link.download = buildShareCardFilename(card, format);
+    document.body.append(link);
+    link.click();
+    link.remove();
     return true;
   } catch {
     return false;
@@ -842,18 +1193,28 @@ async function renderShareCardAsset(target, format) {
 }
 
 function buildShareCardFilename(card, format = "portrait") {
-  const base = String(card?.title || "share-card")
+  const host = String(window.location.hostname || "site")
     .toLowerCase()
-    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/^www\./, "")
+    .replace(/[^a-z0-9]+/g, "-")
     .replace(/-+/g, "-")
-    .replace(/^-|-$/g, "")
-    .slice(0, 40);
+    .replace(/^-|-$/g, "");
+  const now = new Date();
+  const uniqueStamp = [
+    now.getFullYear(),
+    String(now.getMonth() + 1).padStart(2, "0"),
+    String(now.getDate()).padStart(2, "0"),
+    "-",
+    String(now.getHours()).padStart(2, "0"),
+    String(now.getMinutes()).padStart(2, "0"),
+    String(now.getSeconds()).padStart(2, "0"),
+  ].join("");
   const suffix = {
     portrait: "9x16",
     square: "1x1",
     landscape: "16x9",
   }[resolveCardFormat(format)] || "card";
-  return `${base || "share-card"}-${suffix}.png`;
+  return `${host || "site"}-${uniqueStamp}-${suffix}.png`;
 }
 
 function addTextMessage(role, text) {
@@ -864,7 +1225,7 @@ function addTextMessage(role, text) {
 
   const badge = document.createElement("div");
   badge.className = "badge";
-  badge.textContent = role === "user" ? "Вы" : "ИИ";
+  badge.textContent = role === "user" ? t("userBadge") : t("aiBadge");
 
   const body = document.createElement("p");
   body.className = "body";
@@ -926,7 +1287,7 @@ function normalizeShareCard(rawCard, narrative, timeline, event = "") {
     typeof rawCard.subtitle === "string" && rawCard.subtitle.trim()
       ? rawCard.subtitle.trim()
       : fallback.subtitle;
-  const footer = "butterfly-history.ru\nсмоделировать свою ветку реальности";
+  const footer = getShareCardFooter();
 
   const rawItems = Array.isArray(rawCard.items)
     ? rawCard.items
@@ -987,11 +1348,11 @@ function ensureUniqueShareCardYears(items, timeline) {
 }
 
 function buildFallbackShareCard(narrative, timeline, event = "") {
-  const safeTitle = event || "Что если?";
+  const safeTitle = event || t("fallbackCardTitle");
   const subtitle = buildCardSubtitle(narrative);
   const items = timeline.slice(0, 6).map((point) => ({
     year: point.year || CURRENT_YEAR,
-    text: point.title || point.details || "Ключевой поворот истории.",
+    text: point.title || point.details || t("fallbackCardPoint"),
   }));
 
   const trimmed = items
@@ -1004,7 +1365,7 @@ function buildFallbackShareCard(narrative, timeline, event = "") {
   while (trimmed.length < 5) {
     trimmed.push({
       year: CURRENT_YEAR,
-      text: "Финальный эффект захватывает современность.",
+      text: t("fallbackCardFinal"),
     });
   }
 
@@ -1012,22 +1373,23 @@ function buildFallbackShareCard(narrative, timeline, event = "") {
     title: safeTitle,
     subtitle,
     items: trimmed,
-    footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
+    footer: getShareCardFooter(),
   };
 }
 
 function buildCardSubtitle(narrative) {
   const text = String(narrative || "").replace(/\s+/g, " ").trim();
-  if (!text) return "Хроника альтернативного перелома — коротко и дерзко.";
+  if (!text) return t("fallbackCardSubtitle");
   const sentence = text.split(/[.!?]/).slice(1).find((part) => part.trim());
-  if (!sentence) return "Хроника альтернативного перелома — коротко и дерзко.";
+  if (!sentence) return t("fallbackCardSubtitle");
   const trimmed = sentence.trim();
   return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
 }
 
 function parseShareCardFooter(value) {
   const defaultDomain = "butterfly-history.ru";
-  const defaultCta = "смоделировать свою ветку реальности";
+  const defaultCta = getShareCardCta();
+  const knownCtas = Object.values(SHARE_CARD_CTA).map((cta) => cta.toLowerCase());
   const raw = String(value || "").trim();
 
   if (!raw) {
@@ -1058,7 +1420,7 @@ function parseShareCardFooter(value) {
     };
   }
 
-  if (raw.toLowerCase().includes(defaultCta)) {
+  if (knownCtas.some((cta) => raw.toLowerCase().includes(cta))) {
     const domain = raw.includes(defaultDomain) ? defaultDomain : normalize(raw);
     return { domain, cta: defaultCta };
   }
@@ -1071,12 +1433,12 @@ function parseShareCardFooter(value) {
 
 function normalizeTimeline(rawTimeline) {
   const defaults = [
-    { year: CURRENT_YEAR - 120, title: "Ранний перелом", details: "Начинаются первые изменения." },
-    { year: CURRENT_YEAR - 80, title: "Закрепление", details: "Новые процессы становятся устойчивыми." },
-    { year: CURRENT_YEAR - 50, title: "Институциональный сдвиг", details: "Изменения входят в норму." },
-    { year: CURRENT_YEAR - 35, title: "Глобальный эффект", details: "Изменения влияют на международный баланс." },
-    { year: CURRENT_YEAR - 15, title: "Эхо перемен", details: "Новое поколение живет иначе." },
-    { year: CURRENT_YEAR, title: "Сегодня", details: "Формируется альтернативная современность." },
+    { year: CURRENT_YEAR - 120, title: t("timelineEarlyTitle"), details: t("timelineEarlyDetails") },
+    { year: CURRENT_YEAR - 80, title: t("timelineTrendTitle"), details: t("timelineTrendDetails") },
+    { year: CURRENT_YEAR - 50, title: t("timelineShiftTitle"), details: t("timelineShiftDetails") },
+    { year: CURRENT_YEAR - 35, title: t("timelineGlobalTitle"), details: t("timelineGlobalDetails") },
+    { year: CURRENT_YEAR - 15, title: t("timelineEchoTitle"), details: t("timelineEchoDetails") },
+    { year: CURRENT_YEAR, title: t("timelineTodayTitle"), details: t("timelineTodayDetails") },
   ];
 
   if (!Array.isArray(rawTimeline)) {
@@ -1090,7 +1452,7 @@ function normalizeTimeline(rawTimeline) {
       const title =
         typeof point?.title === "string" && point.title.trim()
           ? point.title.trim()
-          : `Этап ${index + 1}`;
+          : `${t("stageLabel")} ${index + 1}`;
       const details =
         typeof point?.details === "string" && point.details.trim()
           ? point.details.trim()
@@ -1113,9 +1475,9 @@ function normalizeTimeline(rawTimeline) {
 
 function normalizeBranches(rawBranches) {
   const defaults = [
-    "Усилить международные союзы",
-    "Сделать ставку на технологический рывок",
-    "Сфокусироваться на внутренних реформах",
+    t("branch1"),
+    t("branch2"),
+    t("branch3"),
   ];
 
   if (!Array.isArray(rawBranches)) {
@@ -1143,10 +1505,10 @@ function normalizeImages(rawImages) {
   return rawImages
     .map((item) => {
       if (typeof item === "string") {
-        return { src: item, prompt: "Иллюстрация альтернативной истории" };
+        return { src: item, prompt: t("imagePromptFallback") };
       }
       if (typeof item?.src === "string") {
-        return { src: item.src, prompt: item.prompt || "Иллюстрация альтернативной истории" };
+        return { src: item.src, prompt: item.prompt || t("imagePromptFallback") };
       }
       return null;
     })
@@ -1186,7 +1548,7 @@ function shorten(value, maxLength) {
 function sanitizeNarrativeText(value) {
   const raw = stripCodeFences(String(value || ""));
   if (!raw) {
-    return "Гипотеза построена, но текстовое описание оказалось неполным.";
+    return t("narrativeIncomplete");
   }
 
   const parsed = parseStructuredNarrative(raw);
@@ -1195,7 +1557,7 @@ function sanitizeNarrativeText(value) {
   }
 
   if (looksLikeStructuredPayload(raw)) {
-    return "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.";
+    return t("narrativeJson");
   }
 
   return raw.replace(/\s+/g, " ").trim();
@@ -1272,4 +1634,13 @@ function looksLikeStructuredPayload(text) {
   ];
   const matched = markers.filter((marker) => value.includes(marker)).length;
   return matched >= 2;
+}
+
+function escapeHtml(value) {
+  return String(value || "")
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
 }

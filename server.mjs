@@ -347,6 +347,7 @@ async function handleAltHistory(req, res) {
   const body = await readJsonBody(req);
   const event = typeof body.event === "string" ? body.event.trim() : "";
   const branch = typeof body.branch === "string" ? body.branch.trim() : "";
+  const language = normalizeLanguage(body.language || body.lang);
   const context = normalizeContext(body.context);
   const modeId = typeof body.mode === "string" ? body.mode.trim() : "";
   const requestedModelId =
@@ -365,8 +366,8 @@ async function handleAltHistory(req, res) {
   }
 
   const modeConfig = resolveModeConfig(modeId);
-  const systemMessage = buildSystemMessage(modeConfig.id, currentYear);
-  const userPrompt = buildUserPrompt({ event, branch, context, currentYear });
+  const systemMessage = buildSystemMessage(modeConfig.id, currentYear, language);
+  const userPrompt = buildUserPrompt({ event, branch, context, currentYear, language });
 
   try {
     const scenario = await generateScenario({
@@ -375,6 +376,7 @@ async function handleAltHistory(req, res) {
       userPrompt,
       currentYear,
       event,
+      language,
       temperature: modeConfig.temperature,
     });
 
@@ -454,6 +456,7 @@ async function generateScenario({
   userPrompt,
   currentYear,
   event,
+  language,
   temperature,
 }) {
   const attempts = buildModelAttempts(requestedModelId);
@@ -496,7 +499,7 @@ async function generateScenario({
         throw new Error("Модель вернула пустой ответ.");
       }
 
-      return parseScenarioResponse(modelText, currentYear, event);
+      return parseScenarioResponse(modelText, currentYear, event, language);
     } catch (error) {
       const message =
         error && typeof error.message === "string"
@@ -523,12 +526,59 @@ async function fetchJson(url, options) {
   }
 }
 
+function normalizeLanguage(value) {
+  return String(value || "").toLowerCase() === "en" ? "en" : "ru";
+}
 
-function buildUserPrompt({ event, branch, context, currentYear }) {
+function byLanguage(language, ruText, enText) {
+  return normalizeLanguage(language) === "en" ? enText : ruText;
+}
+
+function buildOutputLanguageInstruction(language) {
+  return byLanguage(
+    language,
+    "Отвечай только на русском языке. Английский не используй.",
+    "Respond in English only. Do not use Russian. All text fields in JSON must be in English."
+  );
+}
+
+function buildUserPrompt({ event, branch, context, currentYear, language }) {
+  const lang = normalizeLanguage(language);
   const serializedContext =
     context.length > 0
       ? JSON.stringify(context, null, 2)
       : "[]";
+
+  if (lang === "en") {
+    if (branch) {
+      return `
+Initial event: ${event}
+Selected branch: ${branch}
+Current year: ${currentYear}
+Short context from previous steps:
+${serializedContext}
+
+Continue exactly this alternate branch.
+Make the text vivid and shareable, like something you'd send to a friend.
+The main card title is already equal to the original question, so do not invent abstract titles.
+Narrative structure: 1) core turning point, 2) chain of concrete consequences, 3) picture of the world today.
+Write concretely: dates, consequences, and everyday details, without vague filler.
+`.trim();
+    }
+
+    return `
+Initial event: ${event}
+Current year: ${currentYear}
+Context from previous steps (if empty, this is the first step):
+${serializedContext}
+
+Build the first step of alternate history.
+Make the text vivid and shareable, like something you'd send to a friend.
+The main card title is already equal to the original question, so do not invent abstract titles.
+Narrative structure: 1) core turning point, 2) chain of concrete consequences, 3) picture of the world today.
+Write concretely: dates, consequences, and everyday details, without vague filler.
+`.trim();
+  }
 
   if (branch) {
     return `
@@ -616,14 +666,15 @@ function normalizeContext(value) {
   });
 }
 
-function buildSystemMessage(modeId, currentYear) {
+function buildSystemMessage(modeId, currentYear, language) {
+  const languageInstruction = buildOutputLanguageInstruction(language);
   switch (modeId) {
     case "dark":
       return {
         role: "system",
         content: `
 Ты летописец катастроф и мрачных альтернативных миров. Пиши тревожно, тяжело, с ощущением надвигающейся катастрофы. Не скатывайся в сухую аналитику.
-Отвечай только на русском языке. Английский не используй.
+${languageInstruction}
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
@@ -651,7 +702,7 @@ function buildSystemMessage(modeId, currentYear) {
         role: "system",
         content: `
 Ты футуролог и автор вдохновляющей альтернативной истории. Пиши масштабно и ярко: ощущение великого шанса, но без сладкой наивности.
-Отвечай только на русском языке. Английский не используй.
+${languageInstruction}
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
@@ -679,7 +730,7 @@ function buildSystemMessage(modeId, currentYear) {
         role: "system",
         content: `
 Ты автор безумной и очень образной альтернативной истории. Пиши странно, ярко и неожиданно, но сохраняй причинно-следственную связность.
-Отвечай только на русском языке. Английский не используй.
+${languageInstruction}
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
@@ -707,7 +758,7 @@ function buildSystemMessage(modeId, currentYear) {
         role: "system",
         content: `
 Ты автор сатирического издания и точный комик. Пиши остро и смешно, но логично: не балаган, а цельная альтернативная история с колкими деталями.
-Отвечай только на русском языке. Английский не используй.
+${languageInstruction}
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
@@ -736,7 +787,7 @@ function buildSystemMessage(modeId, currentYear) {
         role: "system",
         content: `
 Ты сильный автор альтернативной истории и исторический аналитик. Пиши правдоподобно, напряженно и образно, как трейлер документального фильма, но без сухого академизма.
-Отвечай только на русском языке. Английский не используй.
+${languageInstruction}
 Нельзя писать markdown, пояснения, префиксы или блоки кода.
 Верни только корректный JSON-объект с полями:
 - "narrative": строка 220-380 слов. Формат: 3 абзаца, в каждом 2-4 предложения. Первые 1-2 предложения сразу дают самый сильный эффект.
@@ -762,19 +813,21 @@ function buildSystemMessage(modeId, currentYear) {
   }
 }
 
-function parseScenarioResponse(modelText, currentYear, event) {
+function parseScenarioResponse(modelText, currentYear, event, language) {
   const parsed = parseJsonFromModelText(modelText);
   const narrative = sanitizeNarrative(
-    pickString(parsed?.narrative) || modelText.trim()
+    pickString(parsed?.narrative) || modelText.trim(),
+    language
   );
-  const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative);
-  const branches = normalizeBranches(parsed?.branches);
-  const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative);
+  const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative, language);
+  const branches = normalizeBranches(parsed?.branches, language);
+  const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative, language);
   const shareCard = normalizeShareCard(parsed?.share_card, {
     narrative,
     timeline,
     currentYear,
     event,
+    language,
   });
 
   return {
@@ -815,25 +868,33 @@ function parseJsonFromModelText(text) {
   }
 }
 
-function sanitizeNarrative(value) {
+function sanitizeNarrative(value, language) {
   const raw = stripCodeFences(String(value || ""));
   if (!raw) {
-    return "Гипотеза построена, но текстовое описание оказалось неполным.";
+    return byLanguage(
+      language,
+      "Гипотеза построена, но текстовое описание оказалось неполным.",
+      "The hypothesis was generated, but the text description was incomplete."
+    );
   }
 
   const parsed = parseJsonFromModelText(raw);
   const parsedNarrative = pickString(parsed?.narrative);
   if (parsedNarrative) {
-    return sanitizeNarrative(parsedNarrative);
+    return sanitizeNarrative(parsedNarrative, language);
   }
 
   const extractedNarrative = extractNarrativeField(raw);
   if (extractedNarrative) {
-    return sanitizeNarrative(extractedNarrative);
+    return sanitizeNarrative(extractedNarrative, language);
   }
 
   if (looksLikeStructuredPayload(raw)) {
-    return "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.";
+    return byLanguage(
+      language,
+      "Гипотеза построена, но модель вернула служебный JSON вместо чистого текста.",
+      "The hypothesis was generated, but the model returned service JSON instead of clean text."
+    );
   }
 
   return raw.replace(/\s+/g, " ").trim();
@@ -883,8 +944,8 @@ function looksLikeStructuredPayload(text) {
   return matched >= 2;
 }
 
-function normalizeTimeline(rawTimeline, currentYear, narrative) {
-  const defaults = buildDefaultTimeline(currentYear, narrative);
+function normalizeTimeline(rawTimeline, currentYear, narrative, language) {
+  const defaults = buildDefaultTimeline(currentYear, narrative, language);
 
   if (!Array.isArray(rawTimeline)) {
     return defaults;
@@ -896,7 +957,7 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
       year: normalizeYear(item?.year) ?? defaults[Math.min(index, defaults.length - 1)].year,
       title:
         pickString(item?.title) ||
-        `Этап ${index + 1}`,
+        `${byLanguage(language, "Этап", "Phase")} ${index + 1}`,
       details:
         pickString(item?.details) ||
         pickString(item?.text) ||
@@ -931,47 +992,83 @@ function normalizeTimeline(rawTimeline, currentYear, narrative) {
   return timeline;
 }
 
-function buildDefaultTimeline(currentYear, narrative) {
-  const snippet = pickString(narrative) || "Последствия разворачиваются постепенно.";
+function buildDefaultTimeline(currentYear, narrative, language) {
+  const snippet = pickString(narrative) || byLanguage(
+    language,
+    "Последствия разворачиваются постепенно.",
+    "Consequences unfold step by step."
+  );
   return [
     {
       year: currentYear - 120,
-      title: "Ранний перелом",
+      title: byLanguage(language, "Ранний перелом", "Early Breakpoint"),
       details: snippet.slice(0, 180),
     },
     {
       year: currentYear - 80,
-      title: "Закрепление тренда",
-      details: "Новые политические и экономические правила начинают стабилизироваться.",
+      title: byLanguage(language, "Закрепление тренда", "Trend Consolidation"),
+      details: byLanguage(
+        language,
+        "Новые политические и экономические правила начинают стабилизироваться.",
+        "New political and economic rules begin to stabilize."
+      ),
     },
     {
       year: currentYear - 50,
-      title: "Институциональный сдвиг",
-      details: "Изменения входят в рутину управления и становятся нормой.",
+      title: byLanguage(language, "Институциональный сдвиг", "Institutional Shift"),
+      details: byLanguage(
+        language,
+        "Изменения входят в рутину управления и становятся нормой.",
+        "Changes become part of governance routines and turn into the norm."
+      ),
     },
     {
       year: currentYear - 35,
-      title: "Глобальный эффект",
-      details: "Изменения переходят на мировой уровень и влияют на союзы и технологии.",
+      title: byLanguage(language, "Глобальный эффект", "Global Impact"),
+      details: byLanguage(
+        language,
+        "Изменения переходят на мировой уровень и влияют на союзы и технологии.",
+        "Shifts scale globally and reshape alliances and technology."
+      ),
     },
     {
       year: currentYear - 15,
-      title: "Эхо перемен",
-      details: "Новые поколения живут в иной политической и культурной реальности.",
+      title: byLanguage(language, "Эхо перемен", "Echo Of Change"),
+      details: byLanguage(
+        language,
+        "Новые поколения живут в иной политической и культурной реальности.",
+        "New generations live in a different political and cultural reality."
+      ),
     },
     {
       year: currentYear,
-      title: "Состояние сегодня",
-      details: "Мир приходит к альтернативной современной конфигурации.",
+      title: byLanguage(language, "Состояние сегодня", "Present-Day State"),
+      details: byLanguage(
+        language,
+        "Мир приходит к альтернативной современной конфигурации.",
+        "The world arrives at an alternate modern configuration."
+      ),
     },
   ];
 }
 
-function normalizeBranches(rawBranches) {
+function normalizeBranches(rawBranches, language) {
   const defaults = [
-    "Сделать ставку на технологический рывок и его последствия",
-    "Усилить международные союзы и проверить, как меняется баланс сил",
-    "Сфокусироваться на внутренних реформах и реакции общества",
+    byLanguage(
+      language,
+      "Сделать ставку на технологический рывок и его последствия",
+      "Double down on a technological leap and its consequences"
+    ),
+    byLanguage(
+      language,
+      "Усилить международные союзы и проверить, как меняется баланс сил",
+      "Strengthen international alliances and test how the balance of power changes"
+    ),
+    byLanguage(
+      language,
+      "Сфокусироваться на внутренних реформах и реакции общества",
+      "Focus on internal reforms and social response"
+    ),
   ];
 
   if (!Array.isArray(rawBranches)) {
@@ -994,7 +1091,7 @@ function normalizeBranches(rawBranches) {
   return unique.slice(0, 3);
 }
 
-function normalizeImagePrompts(rawPrompts, narrative) {
+function normalizeImagePrompts(rawPrompts, narrative, language) {
   const prompts = Array.isArray(rawPrompts)
     ? rawPrompts
         .map((prompt) => pickString(prompt))
@@ -1008,13 +1105,21 @@ function normalizeImagePrompts(rawPrompts, narrative) {
 
   const summary = (pickString(narrative) || "").slice(0, 260);
   return [
-    `Альтернативная история, кинематографичная сцена, исторический антураж, высокая детализация: ${summary}`,
-    `Панорама города в альтернативном мире, исторический реализм, широкоугольный кадр, реалистичный свет`,
+    byLanguage(
+      language,
+      `Альтернативная история, кинематографичная сцена, исторический антураж, высокая детализация: ${summary}`,
+      `Alternate history, cinematic scene, historical atmosphere, high detail: ${summary}`
+    ),
+    byLanguage(
+      language,
+      "Панорама города в альтернативном мире, исторический реализм, широкоугольный кадр, реалистичный свет",
+      "City panorama in an alternate world, historical realism, wide-angle shot, realistic lighting"
+    ),
   ];
 }
 
-function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event }) {
-  const fallback = buildFallbackShareCard({ narrative, timeline, currentYear, event });
+function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event, language }) {
+  const fallback = buildFallbackShareCard({ narrative, timeline, currentYear, event, language });
   const forcedTitle = pickString(event) || fallback.title;
 
   if (!rawCard || typeof rawCard !== "object") {
@@ -1026,7 +1131,11 @@ function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event }
 
   const title = forcedTitle;
   const subtitle = pickString(rawCard.subtitle) || fallback.subtitle;
-  const footer = "butterfly-history.ru\nсмоделировать свою ветку реальности";
+  const footer = byLanguage(
+    language,
+    "butterfly-history.ru\nсмоделировать свою ветку реальности",
+    "butterfly-history.ru\nmodel your own alternate timeline"
+  );
   const rawItems = Array.isArray(rawCard.items)
     ? rawCard.items
     : Array.isArray(rawCard.timeline)
@@ -1085,12 +1194,15 @@ function ensureUniqueYears(items, timeline, currentYear) {
   return result;
 }
 
-function buildFallbackShareCard({ narrative, timeline, currentYear, event }) {
-  const title = pickString(event) || "Что если?";
-  const subtitle = buildCardSubtitle(narrative);
+function buildFallbackShareCard({ narrative, timeline, currentYear, event, language }) {
+  const title = pickString(event) || byLanguage(language, "Что если?", "What if?");
+  const subtitle = buildCardSubtitle(narrative, language);
   const items = timeline.slice(0, 6).map((point) => ({
     year: point.year || currentYear,
-    text: pickString(point.title) || pickString(point.details) || "Ключевой поворот истории.",
+    text:
+      pickString(point.title) ||
+      pickString(point.details) ||
+      byLanguage(language, "Ключевой поворот истории.", "Key turning point in history."),
   }));
 
   const trimmed = items
@@ -1103,7 +1215,11 @@ function buildFallbackShareCard({ narrative, timeline, currentYear, event }) {
   while (trimmed.length < 5) {
     trimmed.push({
       year: currentYear,
-      text: "Финальный эффект захватывает современность.",
+      text: byLanguage(
+        language,
+        "Финальный эффект захватывает современность.",
+        "The final effect reaches the present day."
+      ),
     });
   }
 
@@ -1111,15 +1227,31 @@ function buildFallbackShareCard({ narrative, timeline, currentYear, event }) {
     title,
     subtitle,
     items: trimmed,
-    footer: "butterfly-history.ru\nсмоделировать свою ветку реальности",
+    footer: byLanguage(
+      language,
+      "butterfly-history.ru\nсмоделировать свою ветку реальности",
+      "butterfly-history.ru\nmodel your own alternate timeline"
+    ),
   };
 }
 
-function buildCardSubtitle(narrative) {
+function buildCardSubtitle(narrative, language) {
   const text = pickString(narrative).replace(/\s+/g, " ").trim();
-  if (!text) return "Хроника альтернативного перелома — коротко и дерзко.";
+  if (!text) {
+    return byLanguage(
+      language,
+      "Хроника альтернативного перелома — коротко и дерзко.",
+      "A sharp snapshot of an alternate turning point."
+    );
+  }
   const sentence = text.split(/[.!?]/).find((part) => part.trim());
-  if (!sentence) return "Хроника альтернативного перелома — коротко и дерзко.";
+  if (!sentence) {
+    return byLanguage(
+      language,
+      "Хроника альтернативного перелома — коротко и дерзко.",
+      "A sharp snapshot of an alternate turning point."
+    );
+  }
   const trimmed = sentence.trim();
   return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
 }
@@ -1281,7 +1413,7 @@ function buildFallbackSvgDataUri(prompt) {
   <path d="${skyline}" fill="url(#ground)"/>
   <rect x="0" y="646" width="1024" height="122" fill="rgba(8,8,8,0.42)"/>
   <text x="44" y="704" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="28" fill="rgba(255,255,255,0.87)">
-    Альтернативный мир
+    Alternate World
   </text>
   <text x="44" y="738" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="20" fill="rgba(255,255,255,0.78)">
     ${caption}
@@ -1422,8 +1554,8 @@ function injectScenarioMeta(html, scenarioParam, siteUrl) {
     '<meta property="og:description" content="' + escapeHtmlAttr(meta.description) + '" />',
     '<meta property="og:type" content="website" />',
     '<meta property="og:url" content="' + escapeHtmlAttr(scenarioUrl) + '" />',
-    '<meta property="og:locale" content="ru_RU" />',
-    '<meta property="og:site_name" content="Эффект Бабочки" />',
+    '<meta property="og:locale" content="' + escapeHtmlAttr(meta.locale) + '" />',
+    '<meta property="og:site_name" content="' + escapeHtmlAttr(meta.siteName) + '" />',
     '<meta property="og:image" content="' + escapeHtmlAttr(meta.imageUrl) + '" />',
     '<meta property="og:image:type" content="image/png" />',
     '<meta property="og:image:width" content="1200" />',
@@ -1451,20 +1583,41 @@ function buildScenarioMeta(scenarioParam, siteUrl) {
   const parsed = decodeScenarioPayload(scenarioParam);
   if (!parsed) return null;
 
-  const title = oneLine(parsed.event || parsed.title || "Эффект Бабочки");
+  const lang = normalizeLanguage(parsed.lang || parsed.language);
+  const title = oneLine(parsed.event || parsed.title || byLanguage(lang, "Эффект Бабочки", "Butterfly Effect"));
   const subtitle = oneLine(parsed.subtitle || "");
   const narrative = oneLine(parsed.narrative || "");
   const description = truncate(subtitle || firstSentence(narrative), 220)
-    || "Альтернативная история с неожиданной развилкой и последствиями.";
+    || byLanguage(
+      lang,
+      "Альтернативная история с неожиданной развилкой и последствиями.",
+      "Alternate history with an unexpected branch and consequences."
+    );
   const imageUrl = `${siteUrl}/og/scenario.png?scenario=${encodeURIComponent(scenarioParam)}`;
-  return { title, description, imageUrl, subtitle, narrative };
+  return {
+    title,
+    description,
+    imageUrl,
+    subtitle,
+    narrative,
+    locale: lang === "en" ? "en_US" : "ru_RU",
+    siteName: byLanguage(lang, "Эффект Бабочки", "Butterfly Effect"),
+  };
 }
 
 async function handleScenarioOgImage(req, res, url) {
   const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
   const parsed = decodeScenarioPayload(scenarioParam);
-  const title = oneLine(parsed?.event || parsed?.title || "Эффект Бабочки");
-  const subtitle = oneLine(parsed?.subtitle || "Альтернативная история, которой хочется поделиться");
+  const lang = normalizeLanguage(parsed?.lang || parsed?.language);
+  const title = oneLine(parsed?.event || parsed?.title || byLanguage(lang, "Эффект Бабочки", "Butterfly Effect"));
+  const subtitle = oneLine(
+    parsed?.subtitle ||
+      byLanguage(
+        lang,
+        "Альтернативная история, которой хочется поделиться",
+        "An alternate history worth sharing"
+      )
+  );
   const narrative = oneLine(parsed?.narrative || "");
 
   const svg = buildScenarioOgSvg({
@@ -1487,8 +1640,16 @@ async function handleScenarioOgImage(req, res, url) {
 async function handleScenarioOgPng(req, res, url) {
   const scenarioParam = String(url.searchParams.get("scenario") || "").trim();
   const parsed = decodeScenarioPayload(scenarioParam);
-  const title = oneLine(parsed?.event || parsed?.title || "Эффект Бабочки");
-  const subtitle = oneLine(parsed?.subtitle || "Альтернативная история, которой хочется поделиться");
+  const lang = normalizeLanguage(parsed?.lang || parsed?.language);
+  const title = oneLine(parsed?.event || parsed?.title || byLanguage(lang, "Эффект Бабочки", "Butterfly Effect"));
+  const subtitle = oneLine(
+    parsed?.subtitle ||
+      byLanguage(
+        lang,
+        "Альтернативная история, которой хочется поделиться",
+        "An alternate history worth sharing"
+      )
+  );
   const narrative = oneLine(parsed?.narrative || "");
 
   const svg = buildScenarioOgSvg({
@@ -1549,7 +1710,7 @@ function buildScenarioOgSvg({ title, subtitle, snippet }) {
   <rect width="1200" height="630" fill="url(#bg)" />
   <rect width="1200" height="630" fill="url(#glow)" />
   <rect x="54" y="54" width="1092" height="522" rx="26" fill="rgba(8,8,8,0.44)" stroke="rgba(124,225,217,0.35)" />
-  <text x="84" y="112" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="30" fill="#7ce1d9" letter-spacing="2">АЛЬТЕРНАТИВНАЯ ИСТОРИЯ</text>
+  <text x="84" y="112" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="30" fill="#7ce1d9" letter-spacing="2">ALTERNATE HISTORY</text>
   ${renderSvgLines(titleLines, 84, titleY, 70, 58, "#f6f9f9", 800)}
   ${renderSvgLines(subtitleLines, 84, subtitleY, 36, 42, "rgba(235,245,245,0.92)", 600)}
   ${renderSvgLines(snippetLines, 84, snippetY, 30, 36, "rgba(235,245,245,0.84)", 500)}

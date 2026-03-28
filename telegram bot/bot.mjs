@@ -1,837 +1,582 @@
-import fs from "node:fs/promises";
-import path from "node:path";
-import { Buffer } from "node:buffer";
-import { fileURLToPath } from "node:url";
-import { Resvg } from "@resvg/resvg-js";
+/**
+ * bot.mjs — Telegram-бот «Эффект Бабочки»
+ *
+ * Переменные окружения (из родительского .env или своего):
+ *   BOT_TOKEN          — токен бота от @BotFather (обязательно)
+ *   BUTTERFLY_API_URL  — URL основного сервера (по умолчанию http://localhost:3000)
+ */
+
+import fs from 'node:fs';
+import path from 'node:path';
+import crypto from 'node:crypto';
+import { fileURLToPath } from 'node:url'; // handles spaces and special chars in paths
+import { Telegraf, Markup } from 'telegraf';
+
 import {
-  buildAltHistoryScenario,
-  getAvailableModes,
-  getDefaultModelMeta,
-  getModeLabel,
-  getRandomExample,
-  hasAnyEnabledModels,
-  missingModelMessage,
-} from "./lib/alt-history-core.mjs";
+  getUser,
+  getRemainingRequests,
+  canMakeRequest,
+  consumeRequest,
+  refundRequest,
+  addPaidRequests,
+  FREE_REQUESTS,
+} from './store.mjs';
+import { generateScenario } from './ai.mjs';
+import { generateCardPng } from './card.mjs';
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
-const DATA_DIR = path.join(__dirname, "data");
-const STATE_FILE = path.join(DATA_DIR, "state.json");
+// ─── Env loading ─────────────────────────────────────────────────────────────
 
-const BOT_TOKEN =
-  process.env.TELEGRAM_BOT_TOKEN ||
-  process.env.BOT_TOKEN ||
-  "";
-const TELEGRAM_DISABLE_POLLING = process.env.TELEGRAM_DISABLE_POLLING === "1";
+loadEnv();
 
-const MODE_MENU = getAvailableModes();
-const pendingChats = new Set();
+// ─── Config ───────────────────────────────────────────────────────────────────
 
-const baseState = {
-  lastUpdateId: 0,
-  chats: {},
+const BOT_TOKEN = process.env.BOT_TOKEN;
+if (!BOT_TOKEN) {
+  console.error('❌  BOT_TOKEN не задан. Добавьте его в .env.');
+  process.exit(1);
+}
+
+const MODE_LABELS = {
+  realism:    '⚡ Реализм',
+  dark:       '🌑 Мрачная хроника',
+  prosperity: '🌟 Процветание',
+  madness:    '🌀 Безумие',
+  humor:      '😄 Юмор',
 };
 
-let state = await readState();
+// Stars packages: { id, label, requests, stars }
+const STAR_PACKAGES = [
+  { id: 'pkg10',  label: '10 сценариев',  requests: 10,  stars: 50  },
+  { id: 'pkg50',  label: '50 сценариев',  requests: 50,  stars: 200 },
+];
 
-if (TELEGRAM_DISABLE_POLLING) {
-  console.log("Telegram polling disabled by TELEGRAM_DISABLE_POLLING=1");
-} else if (!BOT_TOKEN) {
-  console.error("Не найден TELEGRAM_BOT_TOKEN в .env");
-  process.exit(1);
-} else {
-  if (!hasAnyEnabledModels()) {
-    console.error(missingModelMessage());
-    process.exit(1);
+// ─── In-memory state ──────────────────────────────────────────────────────────
+
+/**
+ * pendingEvents: userId → eventText
+ * Stores what the user just wrote before selecting a mode.
+ */
+const pendingEvents = new Map();
+
+/**
+ * scenarioCache: scenarioId → { event, mode, context }
+ * Used for branch continuation when user clicks a branch button.
+ * Auto-cleaned after 2 hours.
+ */
+const scenarioCache = new Map();
+
+function cacheScenario(event, mode, context) {
+  const id = crypto.randomBytes(5).toString('hex');
+  scenarioCache.set(id, { event, mode, context, ts: Date.now() });
+
+  // Lazy cleanup: remove entries older than 2 hours
+  for (const [key, val] of scenarioCache) {
+    if (Date.now() - val.ts > 2 * 60 * 60 * 1000) scenarioCache.delete(key);
   }
 
-  console.log("Telegram bot started");
-  void startPolling();
+  return id;
 }
 
-async function startPolling() {
-  while (true) {
-    try {
-      const updates = await telegramCall("getUpdates", {
-        offset: state.lastUpdateId + 1,
-        timeout: 25,
-        allowed_updates: ["message", "callback_query"],
-      });
+// ─── Keyboards ───────────────────────────────────────────────────────────────
 
-      for (const update of updates) {
-        await handleUpdate(update);
-        state.lastUpdateId = Math.max(state.lastUpdateId, Number(update.update_id) || 0);
-        await writeState(state);
-      }
-    } catch (error) {
-      console.error("Polling error:", error?.message || error);
-      await delay(3000);
-    }
-  }
+const MODE_KEYBOARD = Markup.inlineKeyboard([
+  [
+    Markup.button.callback('⚡ Реализм',         'mode:realism'),
+    Markup.button.callback('🌑 Мрачная хроника', 'mode:dark'),
+  ],
+  [
+    Markup.button.callback('🌟 Процветание',     'mode:prosperity'),
+    Markup.button.callback('🌀 Безумие',         'mode:madness'),
+  ],
+  [Markup.button.callback('😄 Юмор',            'mode:humor')],
+]);
+
+function buildBuyKeyboard() {
+  return Markup.inlineKeyboard(
+    STAR_PACKAGES.map((pkg) => [
+      Markup.button.callback(
+        `${pkg.label} — ${pkg.stars} ⭐`,
+        `buy:${pkg.id}`
+      ),
+    ])
+  );
 }
 
-async function handleUpdate(update) {
-  if (update?.message) {
-    await handleMessage(update.message);
-    return;
-  }
-
-  if (update?.callback_query) {
-    await handleCallback(update.callback_query);
-  }
+function buildBranchKeyboard(branches, scenarioId) {
+  if (!branches?.length) return {};
+  const buttons = branches
+    .slice(0, 3)
+    .map((b, i) => [Markup.button.callback(`↪ ${b}`, `branch:${scenarioId}:${i}`)]);
+  buttons.push([Markup.button.callback('🔄 Новый вопрос', 'new')]);
+  return Markup.inlineKeyboard(buttons);
 }
 
-async function handleMessage(message) {
-  const chatId = message?.chat?.id;
-  const text = typeof message?.text === "string" ? message.text.trim() : "";
+// ─── Formatting helpers ───────────────────────────────────────────────────────
 
-  if (!chatId) {
-    return;
-  }
-
-  if (!text) {
-    await sendMessage(
-      chatId,
-      "Я понимаю только текст. Просто напишите событие в стиле: Что если СССР не распался в 1991 году?"
-    );
-    return;
-  }
-
-  const session = getChatSession(chatId);
-
-  if (text === "/start") {
-    session.currentEvent = "";
-    session.context = [];
-    session.lastScenario = null;
-    await writeState(state);
-    await sendWelcome(chatId, session.mode);
-    return;
-  }
-
-  if (text === "/help") {
-    await sendHelp(chatId, session.mode);
-    return;
-  }
-
-  if (text === "/mode") {
-    await sendModePicker(chatId, session.mode);
-    return;
-  }
-
-  if (text === "/reset") {
-    session.currentEvent = "";
-    session.context = [];
-    session.lastScenario = null;
-    await writeState(state);
-    await sendMessage(
-      chatId,
-      `Контекст очищен. Режим остался: ${getModeLabel(session.mode)}.\n\nТеперь просто пришлите новый вопрос в формате "Что если ...?"`
-    );
-    return;
-  }
-
-  if (text === "/random") {
-    const example = getRandomExample();
-    await sendMessage(chatId, `Пробуем случайный пример:\n\n${example}`);
-    await startNewScenario(chatId, example);
-    return;
-  }
-
-  if (text.startsWith("/")) {
-    await sendHelp(chatId, session.mode);
-    return;
-  }
-
-  await startNewScenario(chatId, text);
+/** Escapes characters reserved in HTML parse_mode */
+function h(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
 }
 
-async function handleCallback(query) {
-  const chatId = query?.message?.chat?.id;
-  const data = typeof query?.data === "string" ? query.data : "";
-
-  if (!chatId || !data) {
-    await answerCallbackQuery(query?.id);
-    return;
-  }
-
-  const session = getChatSession(chatId);
-
-  if (data.startsWith("mode:")) {
-    const modeId = data.slice("mode:".length);
-    if (!MODE_MENU.some((entry) => entry.id === modeId)) {
-      await answerCallbackQuery(query.id, "Неизвестный режим");
-      return;
-    }
-
-    session.mode = modeId;
-    await writeState(state);
-    await answerCallbackQuery(query.id, `Режим: ${getModeLabel(modeId)}`);
-    await sendMessage(
-      chatId,
-      `Режим переключен на "${getModeLabel(modeId)}".\n\nТеперь отправьте событие или нажмите /random.`
-    );
-    return;
-  }
-
-  if (data === "menu:mode") {
-    await answerCallbackQuery(query.id);
-    await sendModePicker(chatId, session.mode);
-    return;
-  }
-
-  if (data === "random") {
-    const example = getRandomExample();
-    await answerCallbackQuery(query.id, "Выбрал случайный сценарий");
-    await sendMessage(chatId, `Пробуем случайный пример:\n\n${example}`);
-    await startNewScenario(chatId, example);
-    return;
-  }
-
-  if (data.startsWith("branch:")) {
-    const index = Number.parseInt(data.slice("branch:".length), 10);
-    const branch = session.lastScenario?.branches?.[index];
-
-    if (!branch || !session.currentEvent || !session.lastScenario) {
-      await answerCallbackQuery(query.id, "Сначала создайте новый сценарий");
-      return;
-    }
-
-    await answerCallbackQuery(query.id, "Продолжаю выбранную ветку");
-    await continueScenario(chatId, branch);
-    return;
-  }
-
-  await answerCallbackQuery(query.id);
+/** Highlights 4-digit years in a string using <code> tags */
+function highlightYears(text) {
+  return h(text).replace(/\b(1[0-9]{3}|20[0-9]{2}|2100)\b/g, '<code>$1</code>');
 }
 
-async function startNewScenario(chatId, event) {
-  const session = getChatSession(chatId);
-  session.currentEvent = event;
-  session.context = [];
-  session.lastScenario = null;
-  await writeState(state);
-
-  await generateAndSendScenario(chatId, {
-    event,
-    branch: "",
-    context: [],
-  });
+/** Formats remaining requests with emoji */
+function remainingLabel(n) {
+  if (n <= 0) return '0 запросов';
+  return `${n} ${n === 1 ? 'запрос' : n < 5 ? 'запроса' : 'запросов'}`;
 }
 
-async function continueScenario(chatId, branch) {
-  const session = getChatSession(chatId);
-  if (!session.currentEvent || !session.lastScenario) {
-    await sendMessage(chatId, "Сначала пришлите новый вопрос в формате: Что если ...?");
-    return;
-  }
+/** Builds the text message shown below the card image */
+function buildNarrativeMessage(scenario, remaining) {
+  const title   = h(scenario.event || scenario.shareCard?.title || '');
+  const mode    = h(MODE_LABELS[scenario.mode] || '');
+  const narr    = highlightYears(scenario.narrative || '');
+  const rem     = remainingLabel(remaining);
 
-  const contextForCall = [
-    ...session.context,
-    scenarioToContextEntry(session.lastScenario),
-  ].slice(-4);
-
-  await generateAndSendScenario(chatId, {
-    event: session.currentEvent,
-    branch,
-    context: contextForCall,
-  });
+  return `<b>${title}</b> ${mode}\n\n${narr}\n\n<i>Осталось запросов: ${rem}</i>`;
 }
 
-async function generateAndSendScenario(chatId, payload) {
-  if (pendingChats.has(chatId)) {
-    await sendMessage(chatId, "Я уже считаю предыдущий сценарий. Подождите пару секунд.");
-    return;
+/** Builds the welcome/start message */
+async function buildWelcomeText(userId) {
+  const user = await getUser(userId);
+  const remaining = (user.freeLeft || 0) + (user.paid || 0);
+  return (
+    `👋 Добро пожаловать в <b>Эффект Бабочки</b>!\n\n` +
+    `Напишите вопрос в формате <b>«Что если...»</b> — и ИИ построит альтернативную ветку истории с таймлайном и карточкой-картинкой.\n\n` +
+    `<b>У вас ${remainingLabel(remaining)} бесплатно.</b>\n` +
+    `После этого — за ⭐️ Звёзды Telegram.\n\n` +
+    `Команды:\n` +
+    `/status — остаток запросов\n` +
+    `/buy — купить больше запросов\n` +
+    `/help — справка`
+  );
+}
+
+// ─── Bot setup ────────────────────────────────────────────────────────────────
+
+const bot = new Telegraf(BOT_TOKEN);
+
+// ─── /start ───────────────────────────────────────────────────────────────────
+
+bot.start(async (ctx) => {
+  const text = await buildWelcomeText(ctx.from.id);
+  await ctx.replyWithHTML(text);
+});
+
+// ─── /help ────────────────────────────────────────────────────────────────────
+
+bot.command('help', async (ctx) => {
+  await ctx.replyWithHTML(
+    `<b>Как пользоваться ботом:</b>\n\n` +
+    `1. Напишите вопрос — например:\n` +
+    `<i>«Что если Гитлер поступил в Венскую академию художеств?»</i>\n\n` +
+    `2. Выберите режим генерации:\n` +
+    `  ⚡ <b>Реализм</b> — правдоподобный анализ\n` +
+    `  🌑 <b>Мрачная хроника</b> — катастрофический сценарий\n` +
+    `  🌟 <b>Процветание</b> — оптимистичный мир\n` +
+    `  🌀 <b>Безумие</b> — неожиданные повороты\n` +
+    `  😄 <b>Юмор</b> — сатирическая история\n\n` +
+    `3. Получите карточку-картинку и полный текст.\n` +
+    `4. Выберите ветку продолжения или задайте новый вопрос.\n\n` +
+    `<b>Квота:</b> ${FREE_REQUESTS} запроса бесплатно, затем — ⭐ Звёзды.\n` +
+    `/status — ваш баланс\n` +
+    `/buy — купить запросы`
+  );
+});
+
+// ─── /status ─────────────────────────────────────────────────────────────────
+
+bot.command('status', async (ctx) => {
+  const user = await getUser(ctx.from.id);
+  const free    = user.freeLeft || 0;
+  const paid    = user.paid || 0;
+  const total   = user.totalGenerated || 0;
+  const remaining = free + paid;
+
+  let text = `📊 <b>Ваш баланс</b>\n\n`;
+  text += `Бесплатных: <b>${free}</b>\n`;
+  text += `Купленных: <b>${paid}</b>\n`;
+  text += `Всего доступно: <b>${remainingLabel(remaining)}</b>\n`;
+  text += `Всего сгенерировано: ${total}\n`;
+
+  if (remaining === 0) {
+    text += `\n💫 Закончились запросы? Купите ещё! /buy`;
   }
 
-  pendingChats.add(chatId);
-  const session = getChatSession(chatId);
+  await ctx.replyWithHTML(text);
+});
+
+// ─── /buy ─────────────────────────────────────────────────────────────────────
+
+bot.command('buy', async (ctx) => {
+  const text =
+    `⭐️ <b>Купить запросы за Звёзды Telegram</b>\n\n` +
+    `Выберите пакет. Оплата мгновенная, запросы зачисляются сразу.\n\n` +
+    `1 ⭐ ≈ $0.013. Без подписок, разовая покупка.`;
+  await ctx.replyWithHTML(text, buildBuyKeyboard());
+});
+
+// ─── Text messages ────────────────────────────────────────────────────────────
+
+bot.on('text', async (ctx) => {
+  // Skip commands
+  if (ctx.message.text.startsWith('/')) return;
+
+  const eventText = ctx.message.text.trim();
+  if (!eventText || eventText.length < 4) {
+    return ctx.reply('Напишите вопрос в формате «Что если...» — минимум 4 символа.');
+  }
+  if (eventText.length > 500) {
+    return ctx.reply('Слишком длинный вопрос. Сократите до 500 символов.');
+  }
+
+  // Store the pending question
+  pendingEvents.set(ctx.from.id, eventText);
+
+  const remaining = await getRemainingRequests(ctx.from.id);
+  if (remaining <= 0) {
+    return sendPaywall(ctx);
+  }
+
+  const preview = eventText.length > 80 ? `${eventText.slice(0, 77)}…` : eventText;
+  await ctx.replyWithHTML(
+    `📝 <b>${h(preview)}</b>\n\nВыберите режим генерации:`,
+    MODE_KEYBOARD
+  );
+});
+
+// ─── Mode selection callback ─────────────────────────────────────────────────
+
+bot.action(/^mode:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const modeId  = ctx.match[1];
+  const userId  = ctx.from.id;
+  const eventText = pendingEvents.get(userId);
+
+  if (!eventText) {
+    return ctx.editMessageText('⏳ Сессия истекла. Напишите вопрос заново.');
+  }
+
+  // Double-check quota before deducting
+  const canMake = await canMakeRequest(userId);
+  if (!canMake) {
+    pendingEvents.delete(userId);
+    await ctx.editMessageText('У вас закончились запросы.');
+    return sendPaywall(ctx);
+  }
+
+  // Show loading state
+  await ctx.editMessageText(
+    `⏳ Моделирую альтернативную ветку...\n\n<b>${h(eventText)}</b>\n\n` +
+    `Режим: ${h(MODE_LABELS[modeId] || modeId)}`,
+    { parse_mode: 'HTML' }
+  );
+
+  let scenario;
+  let consumed = false;
 
   try {
-    await sendChatAction(chatId, "typing");
+    // Deduct quota BEFORE generation so it can't be spammed
+    consumed = await consumeRequest(userId);
+    if (!consumed) {
+      await ctx.editMessageText('У вас закончились запросы. /buy');
+      return;
+    }
 
-    const result = await buildAltHistoryScenario({
-      event: payload.event,
-      branch: payload.branch,
-      context: payload.context,
-      mode: session.mode,
+    scenario = await generateScenario({ event: eventText, mode: modeId });
+  } catch (error) {
+    console.error('Generation error:', error?.message);
+    // Refund on failure
+    if (consumed) await refundRequest(userId);
+    await ctx.editMessageText(
+      `❌ Ошибка генерации: ${h(error?.message || 'неизвестная ошибка')}.\n\nПопробуйте ещё раз или выберите другой режим.`
+    );
+    return;
+  }
+
+  // Cache scenario for branch continuation
+  const initialContext = [];
+  const scenarioId = cacheScenario(eventText, modeId, initialContext);
+
+  // Store branches in cache for later use
+  const cachedEntry = scenarioCache.get(scenarioId);
+  if (cachedEntry) {
+    cachedEntry.branches = scenario.branches || [];
+    cachedEntry.narrative = scenario.narrative;
+  }
+
+  // Generate card image
+  let cardBuffer;
+  try {
+    cardBuffer = await generateCardPng({
+      title:     scenario.event || eventText,
+      subtitle:  scenario.shareCard?.subtitle || '',
+      narrative: scenario.narrative || '',
+      modeId,
+      modeLabel: MODE_LABELS[modeId]?.replace(/^[^ ]+ /, '') || 'Реализм',
+    });
+  } catch (imgErr) {
+    console.error('Card generation error:', imgErr?.message);
+    // If image fails, still send text
+  }
+
+  const remaining = await getRemainingRequests(userId);
+  const caption   = buildNarrativeMessage(scenario, remaining);
+  const keyboard  = buildBranchKeyboard(scenario.branches, scenarioId);
+
+  // Delete loading message
+  try { await ctx.deleteMessage(); } catch { /* ignore */ }
+
+  // Send card image (or text only if image failed)
+  if (cardBuffer) {
+    await ctx.replyWithPhoto(
+      { source: cardBuffer, filename: 'scenario.png' },
+      { caption: `<b>${h(scenario.event || eventText)}</b>`, parse_mode: 'HTML' }
+    );
+  }
+
+  // Send narrative + branch keyboard
+  await ctx.replyWithHTML(caption, keyboard);
+
+  pendingEvents.delete(userId);
+
+  // Nudge to buy if running low
+  if (remaining === 1) {
+    await ctx.replyWithHTML(
+      `⚠️ У вас остался <b>1 запрос</b>. Пополните баланс, чтобы не прерываться. /buy`,
+      { disable_notification: true }
+    );
+  } else if (remaining === 0) {
+    await ctx.replyWithHTML(
+      `⭐️ Запросы закончились. Купите ещё, чтобы продолжить. /buy`,
+      { disable_notification: true }
+    );
+  }
+});
+
+// ─── Branch continuation callback ────────────────────────────────────────────
+
+bot.action(/^branch:([a-f0-9]+):(\d+)$/, async (ctx) => {
+  await ctx.answerCbQuery('Продолжаю историю…');
+
+  const [, scenarioId, branchIdx] = ctx.match;
+  const userId = ctx.from.id;
+
+  const cached = scenarioCache.get(scenarioId);
+  if (!cached) {
+    return ctx.reply('⏳ Эта история уже недоступна (бот был перезапущен). Задайте вопрос заново.');
+  }
+
+  const branchText = (cached.branches || [])[Number(branchIdx)];
+  if (!branchText) {
+    return ctx.reply('Ветка не найдена. Попробуйте другую.');
+  }
+
+  // Check quota
+  const canMake = await canMakeRequest(userId);
+  if (!canMake) {
+    return sendPaywall(ctx);
+  }
+
+  // Disable the branch buttons so user can't double-click
+  try { await ctx.editMessageReplyMarkup({ inline_keyboard: [] }); } catch { /* ignore */ }
+
+  const loadingMsg = await ctx.replyWithHTML(
+    `⏳ <b>Развиваю ветку:</b>\n<i>${h(branchText)}</i>`
+  );
+
+  let scenario;
+  let consumed = false;
+
+  try {
+    consumed = await consumeRequest(userId);
+    if (!consumed) {
+      await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
+      return sendPaywall(ctx);
+    }
+
+    // Build context from cache
+    const context = [
+      ...(cached.context || []),
+      {
+        branch:    cached.branches?.[Number(branchIdx)] || '',
+        narrative: cached.narrative || '',
+        timeline:  [],
+      },
+    ].slice(-4); // keep last 4 steps
+
+    scenario = await generateScenario({
+      event:   cached.event,
+      mode:    cached.mode,
+      branch:  branchText,
+      context,
     });
 
-    const scenario = {
-      ...result.scenario,
-      selectedBranch: payload.branch || "",
-    };
-
-    if (payload.branch) {
-      session.context = payload.context.slice(-4);
-    } else {
-      session.context = [];
+    // Cache new state for further branching
+    const newScenarioId = cacheScenario(cached.event, cached.mode, context);
+    const newEntry = scenarioCache.get(newScenarioId);
+    if (newEntry) {
+      newEntry.branches = scenario.branches || [];
+      newEntry.narrative = scenario.narrative;
     }
 
-    session.currentEvent = payload.event;
-    session.lastScenario = scenario;
-    await writeState(state);
+    // Generate card
+    let cardBuffer;
+    try {
+      cardBuffer = await generateCardPng({
+        title:     scenario.event || cached.event,
+        subtitle:  scenario.shareCard?.subtitle || branchText,
+        narrative: scenario.narrative || '',
+        modeId:    cached.mode,
+        modeLabel: MODE_LABELS[cached.mode]?.replace(/^[^ ]+ /, '') || 'Реализм',
+      });
+    } catch { /* fallback to text only */ }
 
-    await sendScenario(chatId, scenario, result);
+    const remaining = await getRemainingRequests(userId);
+    const caption   = buildNarrativeMessage(scenario, remaining);
+    const keyboard  = buildBranchKeyboard(scenario.branches, newScenarioId);
+
+    await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
+
+    if (cardBuffer) {
+      await ctx.replyWithPhoto(
+        { source: cardBuffer, filename: 'scenario.png' },
+        { caption: `<b>${h(scenario.event || cached.event)}</b>`, parse_mode: 'HTML' }
+      );
+    }
+
+    await ctx.replyWithHTML(caption, keyboard);
+
+    if (remaining === 0) {
+      await ctx.replyWithHTML(`⭐️ Запросы закончились. /buy`, { disable_notification: true });
+    }
+
   } catch (error) {
-    const message =
-      error && typeof error.message === "string"
-        ? error.message
-        : "Не удалось построить сценарий.";
-    await sendMessage(chatId, `Ошибка:\n${message}`);
-  } finally {
-    pendingChats.delete(chatId);
+    console.error('Branch generation error:', error?.message);
+    if (consumed) await refundRequest(userId);
+    await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
+    await ctx.replyWithHTML(`❌ Ошибка: ${h(error?.message || 'неизвестная ошибка')}. Попробуйте ещё раз.`);
   }
+});
+
+// ─── "New question" button ────────────────────────────────────────────────────
+
+bot.action('new', async (ctx) => {
+  await ctx.answerCbQuery();
+  await ctx.replyWithHTML(
+    '📝 Напишите новый вопрос в формате <b>«Что если...»</b>'
+  );
+});
+
+// ─── Buy package callback (show invoice) ─────────────────────────────────────
+
+bot.action(/^buy:(.+)$/, async (ctx) => {
+  await ctx.answerCbQuery();
+
+  const pkgId = ctx.match[1];
+  const pkg   = STAR_PACKAGES.find((p) => p.id === pkgId);
+  if (!pkg) return ctx.reply('Пакет не найден.');
+
+  // Telegraf 4: replyWithInvoice takes a single object, not positional args
+  await ctx.replyWithInvoice({
+    title:       pkg.label,
+    description: `Получите ${pkg.requests} сценариев в боте «Эффект Бабочки».`,
+    payload:     JSON.stringify({ userId: ctx.from.id, pkgId }),
+    currency:    'XTR',
+    prices:      [{ label: pkg.label, amount: pkg.stars }],
+  });
+});
+
+// ─── Pre-checkout: always approve ────────────────────────────────────────────
+
+bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
+
+// ─── Successful payment ───────────────────────────────────────────────────────
+
+bot.on('message', async (ctx, next) => {
+  const payment = ctx.message?.successful_payment;
+  if (!payment) return next();
+
+  let payload = {};
+  try { payload = JSON.parse(payment.invoice_payload); } catch { /* ignore */ }
+
+  const userId  = payload.userId ?? ctx.from.id;
+  const pkgId   = payload.pkgId;
+  const pkg     = STAR_PACKAGES.find((p) => p.id === pkgId);
+  const count   = pkg?.requests ?? 10;
+
+  await addPaidRequests(userId, count);
+
+  const remaining = await getRemainingRequests(userId);
+  await ctx.replyWithHTML(
+    `✅ Оплата прошла! Зачислено <b>${count} запросов</b>.\n` +
+    `Теперь у вас <b>${remainingLabel(remaining)}</b>.\n\n` +
+    `Задавайте вопросы 🚀`
+  );
+});
+
+// ─── Paywall helper ───────────────────────────────────────────────────────────
+
+async function sendPaywall(ctx) {
+  await ctx.replyWithHTML(
+    `⭐️ <b>Бесплатные запросы закончились</b>\n\n` +
+    `Купите пакет за Звёзды Telegram — оплата мгновенная, без подписки:`,
+    buildBuyKeyboard()
+  );
 }
 
-async function sendScenario(chatId, scenario, meta) {
-  const cardSent = await sendScenarioCard(chatId, scenario, meta);
-  if (!cardSent) {
-    throw new Error("Не удалось собрать карточку сценария.");
-  }
+// ─── Error handling ───────────────────────────────────────────────────────────
 
-  await sendBranchPicker(chatId, scenario.branches);
+bot.catch((err, ctx) => {
+  console.error(`Bot error for ${ctx.updateType}:`, err?.message ?? err);
+});
 
-  if (Array.isArray(scenario.images) && scenario.images.length > 0) {
-    for (const [index, image] of scenario.images.entries()) {
-      try {
-        await sendChatAction(chatId, "upload_photo");
-        await sendPhoto(chatId, image.src, {
-          caption:
-            index === 0
-              ? "Иллюстрация альтернативного мира"
-              : "Еще одна иллюстрация этой ветки",
-        });
-      } catch (error) {
-        console.warn("Image send skipped:", error?.message || error);
-      }
-    }
-  }
-}
+// ─── Launch ───────────────────────────────────────────────────────────────────
 
-async function sendWelcome(chatId, currentMode) {
-  const lines = [
-    "Я бот сайта «Эффект Бабочки».",
-    "Просто отправьте вопрос в формате: Что если ...?",
-    "",
-    "Команды:",
-    "/mode - выбрать стиль ответа",
-    "/random - случайный пример",
-    "/reset - очистить текущую ветку",
-    "/help - короткая помощь",
+bot.launch().then(() => {
+  console.log(`🦋 Butterfly Bot запущен (@${bot.botInfo?.username ?? '?'})`);
+});
+
+process.once('SIGINT',  () => bot.stop('SIGINT'));
+process.once('SIGTERM', () => bot.stop('SIGTERM'));
+
+// ─── .env loader ─────────────────────────────────────────────────────────────
+
+function loadEnv() {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+
+  // Try parent .env first, then local .env
+  const candidates = [
+    path.join(__dirname, '..', '.env'),
+    path.join(__dirname, '.env'),
   ];
 
-  await sendMessage(chatId, lines.filter(Boolean).join("\n"));
-  await sendModePicker(chatId, currentMode);
-}
-
-async function sendHelp(chatId, currentMode) {
-  await sendMessage(
-    chatId,
-    [
-      `Текущий режим: ${getModeLabel(currentMode)}`,
-      "",
-      "Как пользоваться:",
-      "1. Пишите событие в формате: Что если СССР не распался в 1991 году?",
-      "2. Бот пришлет текст, таймлайн и кнопки продолжения.",
-      "3. Нажимайте на кнопки, чтобы развивать именно эту ветку.",
-      "",
-      "Команды:",
-      "/mode - сменить режим",
-      "/random - случайный пример",
-      "/reset - начать с чистого листа",
-    ].join("\n")
-  );
-}
-
-async function sendModePicker(chatId, currentMode) {
-  const rows = [];
-  for (let index = 0; index < MODE_MENU.length; index += 2) {
-    const row = MODE_MENU.slice(index, index + 2).map((mode) => ({
-      text: mode.id === currentMode ? `• ${mode.label}` : mode.label,
-      callback_data: `mode:${mode.id}`,
-    }));
-    rows.push(row);
-  }
-
-  rows.push([
-    { text: "Случайный пример", callback_data: "random" },
-  ]);
-
-  await sendMessage(chatId, "Выберите режим ответа:", {
-    reply_markup: {
-      inline_keyboard: rows,
-    },
-  });
-}
-
-async function sendBranchPicker(chatId, branches) {
-  const keyboard = branches.slice(0, 3).map((branch, index) => [
-    {
-      text: shorten(branch, 56),
-      callback_data: `branch:${index}`,
-    },
-  ]);
-
-  keyboard.push([
-    { text: "Сменить режим", callback_data: "menu:mode" },
-  ]);
-
-  await sendMessage(chatId, "Что делаем дальше?", {
-    reply_markup: {
-      inline_keyboard: keyboard,
-    },
-  });
-}
-
-function scenarioToContextEntry(scenario) {
-  return {
-    branch: scenario?.selectedBranch || "",
-    narrative: scenario?.narrative || "",
-    timeline: Array.isArray(scenario?.timeline) ? scenario.timeline : [],
-  };
-}
-
-function getChatSession(chatId) {
-  const id = String(chatId);
-  if (!state.chats[id]) {
-    state.chats[id] = {
-      mode: "realism",
-      currentEvent: "",
-      context: [],
-      lastScenario: null,
-    };
-  }
-  return state.chats[id];
-}
-
-async function readState() {
-  try {
-    const raw = await fs.readFile(STATE_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return {
-      lastUpdateId: Number(parsed?.lastUpdateId) || 0,
-      chats: parsed?.chats && typeof parsed.chats === "object" ? parsed.chats : {},
-    };
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return structuredClone(baseState);
-    }
-    throw error;
-  }
-}
-
-async function writeState(nextState) {
-  await fs.mkdir(DATA_DIR, { recursive: true });
-  const tempPath = `${STATE_FILE}.tmp`;
-  await fs.writeFile(tempPath, JSON.stringify(nextState, null, 2), "utf-8");
-  await fs.rename(tempPath, STATE_FILE);
-}
-
-async function telegramCall(method, payload) {
-  const url = `https://api.telegram.org/bot${BOT_TOKEN}/${method}`;
-  const options = {
-    method: "POST",
-  };
-
-  if (payload instanceof FormData) {
-    options.body = payload;
-  } else {
-    options.headers = { "Content-Type": "application/json" };
-    options.body = JSON.stringify(payload || {});
-  }
-
-  const response = await fetch(url, options);
-  const data = await response.json().catch(() => ({}));
-
-  if (!response.ok || !data?.ok) {
-    const description =
-      data?.description ||
-      `${response.status} ${response.statusText}`.trim() ||
-      "Telegram API error";
-    throw new Error(description);
-  }
-
-  return data.result;
-}
-
-async function sendMessage(chatId, text, extra = {}) {
-  const chunks = splitMessage(text, 3800);
-  for (let index = 0; index < chunks.length; index += 1) {
-    const isLast = index === chunks.length - 1;
-    await telegramCall("sendMessage", {
-      chat_id: chatId,
-      text: chunks[index],
-      disable_web_page_preview: true,
-      ...extra,
-      reply_markup: isLast ? extra.reply_markup : undefined,
-    });
-  }
-}
-
-async function sendPhoto(chatId, source, options = {}) {
-  if (typeof source !== "string" || !source.trim()) {
-    return;
-  }
-
-  if (source.startsWith("data:image/")) {
-    const { mimeType, buffer } = decodeDataImage(source);
-    const form = new FormData();
-    form.set("chat_id", String(chatId));
-    form.set(
-      "photo",
-      new Blob([buffer], { type: mimeType }),
-      `scenario.${mimeType.split("/")[1] || "png"}`
-    );
-
-    if (options.caption) {
-      form.set("caption", shorten(options.caption, 1000));
-    }
-
-    await telegramCall("sendPhoto", form);
-    return;
-  }
-
-  await telegramCall("sendPhoto", {
-    chat_id: chatId,
-    photo: source,
-    caption: options.caption ? shorten(options.caption, 1000) : undefined,
-  });
-}
-
-async function sendScenarioCard(chatId, scenario, meta) {
-  try {
-    const pngBuffer = renderScenarioCardPng(scenario);
-    const form = new FormData();
-    form.set("chat_id", String(chatId));
-    form.set(
-      "photo",
-      new Blob([pngBuffer], { type: "image/png" }),
-      "scenario-card.png"
-    );
-
-    const caption = [
-      `Режим: ${getModeLabel(scenario.mode)}`,
-      meta?.provider ? `Провайдер: ${meta.provider}` : "",
-      meta?.model ? `Модель: ${meta.model}` : "",
-    ]
-      .filter(Boolean)
-      .join("\n");
-
-    if (caption) {
-      form.set("caption", shorten(caption, 1000));
-    }
-
-    await telegramCall("sendPhoto", form);
-    return true;
-  } catch (error) {
-    console.error("Card render error:", error?.message || error);
-    return false;
-  }
-}
-
-async function sendChatAction(chatId, action) {
-  try {
-    await telegramCall("sendChatAction", {
-      chat_id: chatId,
-      action,
-    });
-  } catch {
-    // not critical
-  }
-}
-
-async function answerCallbackQuery(callbackQueryId, text = "") {
-  if (!callbackQueryId) return;
-  try {
-    await telegramCall("answerCallbackQuery", {
-      callback_query_id: callbackQueryId,
-      text: text || undefined,
-      show_alert: false,
-    });
-  } catch {
-    // not critical
-  }
-}
-
-function splitMessage(text, maxLength) {
-  const normalized = String(text || "").trim();
-  if (!normalized) {
-    return ["Пустой ответ."];
-  }
-
-  if (normalized.length <= maxLength) {
-    return [normalized];
-  }
-
-  const chunks = [];
-  let rest = normalized;
-
-  while (rest.length > maxLength) {
-    let slicePoint = rest.lastIndexOf("\n\n", maxLength);
-    if (slicePoint < maxLength * 0.4) {
-      slicePoint = rest.lastIndexOf("\n", maxLength);
-    }
-    if (slicePoint < maxLength * 0.4) {
-      slicePoint = rest.lastIndexOf(" ", maxLength);
-    }
-    if (slicePoint < maxLength * 0.4) {
-      slicePoint = maxLength;
-    }
-
-    chunks.push(rest.slice(0, slicePoint).trim());
-    rest = rest.slice(slicePoint).trim();
-  }
-
-  if (rest) {
-    chunks.push(rest);
-  }
-
-  return chunks;
-}
-
-function decodeDataImage(dataUrl) {
-  const match = dataUrl.match(/^data:(image\/[a-zA-Z0-9.+-]+)(?:;charset=[^;,]+)?;base64,(.+)$/);
-  if (!match) {
-    throw new Error("Некорректный data URL картинки.");
-  }
-
-  return {
-    mimeType: match[1],
-    buffer: Buffer.from(match[2], "base64"),
-  };
-}
-
-function shorten(value, maxLength) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (text.length <= maxLength) {
-    return text;
-  }
-  return `${text.slice(0, maxLength - 1).trimEnd()}…`;
-}
-
-function delay(ms) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function renderScenarioCardPng(scenario) {
-  const svg = buildScenarioCardSvg(scenario);
-  const resvg = new Resvg(svg, {
-    fitTo: {
-      mode: "width",
-      value: 1080,
-    },
-  });
-  return resvg.render().asPng();
-}
-
-function buildScenarioCardSvg(scenario) {
-  const card = scenario?.shareCard || {};
-  const footer = parseShareCardFooter(card.footer);
-  const modeLabel = getModeLabel(scenario?.mode);
-  const titleLines = wrapText(card.title || scenario?.event || "Что если?", 24, 4);
-  const subtitleLines = wrapText(
-    card.subtitle || "Альтернативная история, которой хочется поделиться",
-    34,
-    3
-  );
-  const storyParagraphs = buildStoryParagraphs(scenario?.narrative || "");
-
-  const titleBlock = renderSvgLines(
-    titleLines,
-    84,
-    288,
-    70,
-    78,
-    "#f5fbfb",
-    800
-  );
-
-  const subtitleStartY = 288 + titleLines.length * 78 + 36;
-  const subtitleBlock = renderSvgLines(
-    subtitleLines,
-    84,
-    subtitleStartY,
-    34,
-    42,
-    "rgba(235,245,245,0.92)",
-    600
-  );
-
-  const storyStartY = subtitleStartY + subtitleLines.length * 42 + 76;
-  const storyBlock = renderNarrativeParagraphs(storyParagraphs, storyStartY);
-
-  return `<?xml version="1.0" encoding="UTF-8"?>
-<svg xmlns="http://www.w3.org/2000/svg" width="1080" height="1920" viewBox="0 0 1080 1920">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0%" stop-color="#081515" />
-      <stop offset="45%" stop-color="#0f2422" />
-      <stop offset="100%" stop-color="#171717" />
-    </linearGradient>
-    <radialGradient id="glow" cx="0.85" cy="0.1" r="0.8">
-      <stop offset="0%" stop-color="rgba(124,225,217,0.34)" />
-      <stop offset="100%" stop-color="rgba(124,225,217,0)" />
-    </radialGradient>
-    <linearGradient id="panel" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="rgba(9,13,13,0.55)" />
-      <stop offset="100%" stop-color="rgba(7,7,7,0.78)" />
-    </linearGradient>
-  </defs>
-  <rect width="1080" height="1920" fill="url(#bg)" />
-  <rect width="1080" height="1920" fill="url(#glow)" />
-  <rect x="42" y="42" width="996" height="1836" rx="34" fill="url(#panel)" stroke="rgba(124,225,217,0.28)" stroke-width="2" />
-  <text x="84" y="116" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="28" fill="#7ce1d9" letter-spacing="2">ЧТО ЕСЛИ?</text>
-  <rect x="768" y="76" width="230" height="54" rx="27" fill="rgba(124,225,217,0.14)" stroke="rgba(124,225,217,0.28)" />
-  <text x="883" y="111" text-anchor="middle" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="26" font-weight="700" fill="#d7f6f3">${escapeXml(modeLabel)}</text>
-  ${titleBlock}
-  ${subtitleBlock}
-  ${storyBlock}
-  <rect x="84" y="1712" width="912" height="124" rx="28" fill="rgba(124,225,217,0.10)" stroke="rgba(124,225,217,0.22)" />
-  <text x="132" y="1765" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="30" font-weight="700" fill="#f1fbfb">${escapeXml(footer.domain)}</text>
-  <text x="132" y="1808" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="24" fill="rgba(235,245,245,0.82)">${escapeXml(footer.cta)}</text>
-</svg>`;
-}
-
-function buildStoryParagraphs(narrative) {
-  const text = String(narrative || "").replace(/\r/g, "").trim();
-  if (!text) {
-    return ["Гипотеза готова, но текст оказался пустым."];
-  }
-
-  const normalized = text.replace(/[ \t]+/g, " ");
-  const explicitParagraphs = normalized
-    .split(/\n{2,}/)
-    .map((block) => block.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  if (explicitParagraphs.length > 0) {
-    return explicitParagraphs.slice(0, 4);
-  }
-
-  const sentences = normalized
-    .match(/[^.!?]+[.!?…]?/g)
-    ?.map((sentence) => sentence.replace(/\s+/g, " ").trim())
-    .filter(Boolean);
-
-  if (!sentences || sentences.length <= 1) {
-    return [normalized];
-  }
-
-  const paragraphs = [];
-  for (let index = 0; index < sentences.length; index += 2) {
-    const paragraph = sentences.slice(index, index + 2).join(" ").trim();
-    if (paragraph) {
-      paragraphs.push(paragraph);
-    }
-    if (paragraphs.length >= 4) {
-      break;
-    }
-  }
-
-  return paragraphs;
-}
-
-function renderNarrativeParagraphs(paragraphs, startY) {
-  const blocks = [];
-  let currentY = startY;
-
-  for (const paragraph of paragraphs) {
-    const lines = wrapText(paragraph, 50, 6);
-    blocks.push(
-      renderSvgLines(lines, 84, currentY, 30, 40, "rgba(245,251,251,0.92)", 500)
-    );
-    currentY += lines.length * 40 + 34;
-    if (currentY > 1640) {
-      break;
-    }
-  }
-
-  return blocks.join("\n  ");
-}
-
-function parseShareCardFooter(value) {
-  const defaultDomain = "butterfly-history.ru";
-  const defaultCta = "смоделировать свою ветку реальности";
-  const raw = String(value || "").trim();
-
-  if (!raw) {
-    return { domain: defaultDomain, cta: defaultCta };
-  }
-
-  if (raw.includes("\n")) {
-    const parts = raw
-      .split("\n")
-      .map((item) => String(item || "").trim())
-      .filter(Boolean);
-    return {
-      domain: parts[0] || defaultDomain,
-      cta: parts[1] || defaultCta,
-    };
-  }
-
-  return {
-    domain: raw,
-    cta: defaultCta,
-  };
-}
-
-function wrapText(value, maxChars, maxLines) {
-  const text = String(value || "").replace(/\s+/g, " ").trim();
-  if (!text) return [];
-  const words = text.split(" ");
-  const lines = [];
-  let current = "";
-
-  for (const word of words) {
-    const next = current ? `${current} ${word}` : word;
-    if (next.length <= maxChars) {
-      current = next;
-      continue;
-    }
-
-    if (current) {
-      lines.push(current);
-    } else {
-      lines.push(word.slice(0, maxChars));
-    }
-
-    current = word;
-    if (lines.length >= maxLines - 1) {
-      break;
-    }
-  }
-
-  if (lines.length < maxLines && current) {
-    lines.push(current);
-  }
-
-  if (lines.length === maxLines) {
-    const joined = lines.join(" ");
-    if (joined.length < text.length && !lines[maxLines - 1].endsWith("…")) {
-      lines[maxLines - 1] = shorten(lines[maxLines - 1], Math.max(8, maxChars - 1));
-      if (!lines[maxLines - 1].endsWith("…")) {
-        lines[maxLines - 1] = `${lines[maxLines - 1]}…`;
+  for (const envPath of candidates) {
+    if (!fs.existsSync(envPath)) continue;
+
+    const lines = fs.readFileSync(envPath, 'utf-8').split(/\r?\n/);
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      const eq = trimmed.indexOf('=');
+      if (eq === -1) continue;
+
+      const key = trimmed.slice(0, eq).trim();
+      let val   = trimmed.slice(eq + 1).trim();
+      if ((val.startsWith('"') && val.endsWith('"')) ||
+          (val.startsWith("'") && val.endsWith("'"))) {
+        val = val.slice(1, -1);
       }
+      if (!(key in process.env)) process.env[key] = val;
     }
   }
-
-  return lines.slice(0, maxLines);
 }
 
-function renderSvgLines(lines, x, startY, fontSize, lineHeight, color, weight) {
-  return lines
-    .map(
-      (line, index) =>
-        `<text x="${x}" y="${startY + index * lineHeight}" font-family="'IBM Plex Sans', 'Segoe UI', sans-serif" font-size="${fontSize}" font-weight="${weight}" fill="${color}">${escapeXml(line)}</text>`
-    )
-    .join("\n  ");
-}
 
-function escapeXml(value) {
-  return String(value || "")
-    .replaceAll("&", "&amp;")
-    .replaceAll("<", "&lt;")
-    .replaceAll(">", "&gt;")
-    .replaceAll("\"", "&quot;")
-    .replaceAll("'", "&apos;");
-}

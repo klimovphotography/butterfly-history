@@ -51,6 +51,12 @@ body::before {
   z-index: 1;
 }
 
+.top-actions {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 8px;
+}
+
 .hero {
   margin-bottom: 22px;
 }
@@ -215,6 +221,17 @@ button:disabled {
 }
 
 .random-btn:hover {
+  background: #111111;
+  color: #ffffff;
+  border-color: #111111;
+}
+
+.language-btn {
+  min-width: 108px;
+  text-align: center;
+}
+
+.language-btn.is-en {
   background: #111111;
   color: #ffffff;
   border-color: #111111;
@@ -788,6 +805,10 @@ button:disabled {
     padding: 14px;
   }
 
+  .top-actions {
+    margin-bottom: 10px;
+  }
+
   .action-group {
     width: 100%;
     flex-direction: column;
@@ -813,9 +834,14 @@ button:disabled {
     line-height: 1.15;
   }
 
-  .random-btn {
+  .action-group .random-btn {
     width: 100%;
     max-width: 320px;
+  }
+
+  .top-actions .language-btn {
+    width: auto;
+    max-width: none;
   }
 
   textarea,

@@ -1,9 +1,13 @@
 {
-  "name": "butterfly-history-telegram-bot",
+  "name": "butterfly-bot",
   "version": "1.0.0",
   "private": true,
   "type": "module",
   "scripts": {
-    "start": "node bot.mjs"
+    "start": "node bot.mjs",
+    "dev": "node --watch bot.mjs"
+  },
+  "dependencies": {
+    "telegraf": "^4.16.3"
   }
 }
