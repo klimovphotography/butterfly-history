@@ -370,7 +370,7 @@ async function handleAltHistory(req, res) {
   const userPrompt = buildUserPrompt({ event, branch, context, currentYear, language });
 
   try {
-    const scenario = await generateScenario({
+    const { scenario, usedModel } = await generateScenario({
       requestedModelId,
       systemMessage,
       userPrompt,
@@ -391,6 +391,9 @@ async function handleAltHistory(req, res) {
         ...scenario,
         event,
         mode: modeConfig.id,
+        provider: usedModel?.providerLabel || "",
+        modelLabel: usedModel?.label || "",
+        modelId: usedModel?.id || "",
       },
     });
   } catch (error) {
@@ -499,7 +502,10 @@ async function generateScenario({
         throw new Error("Модель вернула пустой ответ.");
       }
 
-      return parseScenarioResponse(modelText, currentYear, event, language);
+      return {
+        scenario: parseScenarioResponse(modelText, currentYear, event, language),
+        usedModel: attempt,
+      };
     } catch (error) {
       const message =
         error && typeof error.message === "string"

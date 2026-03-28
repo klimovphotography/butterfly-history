@@ -347,6 +347,7 @@ async function requestScenario(payload) {
       return;
     }
 
+    updateProviderPill(scenario.provider, scenario.modelLabel);
     addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
   } catch {
     removeMessage(loadingId);
@@ -563,13 +564,18 @@ async function loadProviderMeta() {
     const response = await fetch("/api/meta");
     if (!response.ok) return;
     const data = await response.json();
-    const provider = String(data?.provider || "").trim();
-    const model = String(data?.model || "").trim();
-    if (!provider) return;
-    providerPill.textContent = model ? `${provider} · ${model}` : provider;
+    updateProviderPill(data?.provider, data?.model);
   } catch {
     // Silent fail: meta is optional UI sugar.
   }
+}
+
+function updateProviderPill(providerName, modelName) {
+  if (!providerPill) return;
+  const provider = String(providerName || "").trim();
+  const model = String(modelName || "").trim();
+  if (!provider) return;
+  providerPill.textContent = model ? `${provider} · ${model}` : provider;
 }
 
 function setUiBusy(state) {
@@ -1329,9 +1335,21 @@ function normalizeScenario(data) {
   const images = normalizeImages(raw.images);
   const event = typeof raw.event === "string" ? raw.event.trim() : "";
   const mode = typeof raw.mode === "string" ? raw.mode.trim() : "";
+  const provider = typeof raw.provider === "string" ? raw.provider.trim() : "";
+  const modelLabel = typeof raw.modelLabel === "string" ? raw.modelLabel.trim() : "";
   const shareCard = normalizeShareCard(raw.shareCard || raw.share_card, narrative, timeline, event);
 
-  return { narrative, timeline, branches, images, shareCard, event, mode };
+  return {
+    narrative,
+    timeline,
+    branches,
+    images,
+    shareCard,
+    event,
+    mode,
+    provider,
+    modelLabel,
+  };
 }
 
 function normalizeShareCard(rawCard, narrative, timeline, event = "") {
