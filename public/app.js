@@ -135,6 +135,8 @@ const TRANSLATIONS = {
     userBadge: "Вы",
     formatAuto: "Авто",
     openPng: "Открыть PNG",
+    shareVk: "Поделиться в VK",
+    shareTelegram: "Поделиться в Telegram",
     ready: "Готово",
     failed: "Не вышло",
     cardEyebrow: "Что если?",
@@ -207,6 +209,8 @@ const TRANSLATIONS = {
     userBadge: "You",
     formatAuto: "Auto",
     openPng: "Open PNG",
+    shareVk: "Share to VK",
+    shareTelegram: "Share to Telegram",
     ready: "Done",
     failed: "Failed",
     cardEyebrow: "What if?",
@@ -515,12 +519,14 @@ function syncDynamicTextLanguage() {
     cta.textContent = getShareCardCta();
   }
 
-  for (const buttonElement of document.querySelectorAll(".share-card-download")) {
+  for (const buttonElement of document.querySelectorAll(".share-card-control[data-i18n-key]")) {
     const htmlButton = /** @type {HTMLButtonElement} */ (buttonElement);
     const isTemporaryLabel = Boolean(htmlButton._labelResetTimer);
-    htmlButton.dataset.originalLabel = t("openPng");
+    const i18nKey = htmlButton.dataset.i18nKey || "";
+    const translatedLabel = t(i18nKey);
+    htmlButton.dataset.originalLabel = translatedLabel;
     if (!isTemporaryLabel) {
-      htmlButton.textContent = t("openPng");
+      htmlButton.textContent = translatedLabel;
     }
   }
 
@@ -700,7 +706,27 @@ function buildShareCard(payload) {
     setTemporaryButtonLabel(openButton, opened ? t("ready") : t("failed"));
   });
 
-  actionGroup.append(openButton);
+  const vkButton = document.createElement("button");
+  vkButton.type = "button";
+  vkButton.className = "share-card-control share-card-social share-card-social-vk";
+  vkButton.textContent = t("shareVk");
+  vkButton.dataset.i18nKey = "shareVk";
+  vkButton.addEventListener("click", async () => {
+    const opened = await openSocialShareWindow("vk", payload);
+    setTemporaryButtonLabel(vkButton, opened ? t("ready") : t("failed"));
+  });
+
+  const telegramButton = document.createElement("button");
+  telegramButton.type = "button";
+  telegramButton.className = "share-card-control share-card-social share-card-social-telegram";
+  telegramButton.textContent = t("shareTelegram");
+  telegramButton.dataset.i18nKey = "shareTelegram";
+  telegramButton.addEventListener("click", async () => {
+    const opened = await openSocialShareWindow("telegram", payload);
+    setTemporaryButtonLabel(telegramButton, opened ? t("ready") : t("failed"));
+  });
+
+  actionGroup.append(vkButton, telegramButton, openButton);
   toolbar.append(formatGroup, actionGroup);
   wrapper.append(toolbar, frameStage);
   renderFrame();
@@ -875,6 +901,26 @@ function buildShareTeaser(payload) {
   const { card, narrative } = payload;
   const lead = extractLeadSentence(narrative);
   return [card.title, card.subtitle, lead].filter(Boolean).join("\n");
+}
+
+function buildSocialShareUrl(network, payload, shareUrl) {
+  const resolvedNetwork = String(network || "").trim().toLowerCase();
+  const url = String(shareUrl || "").trim();
+  if (!url) return "";
+
+  const encodedUrl = encodeURIComponent(url);
+  const title = encodeURIComponent(String(payload?.card?.title || "").trim());
+  const teaser = encodeURIComponent(buildShareTeaser(payload));
+
+  if (resolvedNetwork === "telegram") {
+    return `https://t.me/share/url?url=${encodedUrl}&text=${teaser}`;
+  }
+
+  if (resolvedNetwork === "vk") {
+    return `https://vk.com/share.php?url=${encodedUrl}&title=${title}&comment=${teaser}`;
+  }
+
+  return "";
 }
 
 function getShareUrl(payload) {
@@ -1203,6 +1249,41 @@ async function shareScenarioCard(target, payload, format) {
     return "native";
   } catch {
     return "failed";
+  }
+}
+
+async function openSocialShareWindow(network, payload) {
+  let popup = null;
+
+  try {
+    if (typeof window.open === "function") {
+      popup = window.open("about:blank", "_blank");
+    }
+
+    const shareUrl = await resolveShareUrl(payload);
+    const socialUrl = buildSocialShareUrl(network, payload, shareUrl);
+    if (!socialUrl) {
+      popup?.close?.();
+      return false;
+    }
+
+    if (popup && !popup.closed) {
+      popup.location.replace(socialUrl);
+      popup.focus?.();
+      return true;
+    }
+
+    const link = document.createElement("a");
+    link.href = socialUrl;
+    link.target = "_blank";
+    link.rel = "noopener noreferrer";
+    document.body.append(link);
+    link.click();
+    link.remove();
+    return true;
+  } catch {
+    popup?.close?.();
+    return false;
   }
 }
 

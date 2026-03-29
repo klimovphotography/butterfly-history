@@ -443,6 +443,30 @@ button:disabled {
   border-color: #111111;
 }
 
+.share-card-social-vk {
+  border-color: #0077ff;
+  background: #f1f7ff;
+  color: #0077ff;
+}
+
+.share-card-social-vk:hover {
+  background: #0077ff;
+  color: #ffffff;
+  border-color: #0077ff;
+}
+
+.share-card-social-telegram {
+  border-color: #229ed9;
+  background: #eff9ff;
+  color: #229ed9;
+}
+
+.share-card-social-telegram:hover {
+  background: #229ed9;
+  color: #ffffff;
+  border-color: #229ed9;
+}
+
 .share-card-control.is-active {
   background: #111111;
   color: #ffffff;
