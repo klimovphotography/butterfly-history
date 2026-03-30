@@ -658,6 +658,10 @@ button:disabled {
   overflow: visible;
 }
 
+.share-card-frame.share-card-capture .share-card-body {
+  overflow: hidden;
+}
+
 .share-card-story {
   min-width: 0;
   padding: var(--share-card-story-padding);

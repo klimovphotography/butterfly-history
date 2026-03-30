@@ -1313,6 +1313,7 @@ async function renderShareCardAsset(target, format) {
 
   const clone = target.cloneNode(true);
   clone.dataset.format = captureFormat;
+  clone.classList.add("share-card-capture");
   clone.style.width = `${sourceWidth}px`;
   clone.style.height = `${sourceHeight}px`;
   clone.style.maxWidth = "none";
@@ -1321,6 +1322,7 @@ async function renderShareCardAsset(target, format) {
 
   host.append(clone);
   document.body.append(host);
+  fitShareCardCloneForCapture(clone);
 
   try {
     const canvas = await window.html2canvas(clone, {
@@ -1340,6 +1342,69 @@ async function renderShareCardAsset(target, format) {
   } finally {
     host.remove();
   }
+}
+
+function fitShareCardCloneForCapture(frame) {
+  if (!frame) return;
+  const body = frame.querySelector(".share-card-body");
+  const story = frame.querySelector(".share-card-story");
+  if (!body || !story) return;
+
+  const hasOverflow = () => {
+    const frameOverflow = frame.scrollHeight - frame.clientHeight > 1;
+    const storyOverflow = story.scrollHeight - body.clientHeight > 1;
+    return frameOverflow || storyOverflow;
+  };
+
+  if (!hasOverflow()) return;
+
+  const paragraphs = Array.from(story.querySelectorAll(".share-card-paragraph"));
+  for (let index = paragraphs.length - 1; index >= 0 && hasOverflow(); index -= 1) {
+    const paragraph = paragraphs[index];
+    const originalText = String(paragraph.textContent || "").trim();
+
+    if (!originalText) {
+      paragraph.remove();
+      continue;
+    }
+
+    let low = 0;
+    let high = originalText.length;
+    let bestFit = "";
+
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const nextText = buildClampedParagraphText(originalText, middle);
+      paragraph.replaceChildren();
+      appendNarrativeWithYearHighlights(paragraph, nextText);
+
+      if (hasOverflow()) {
+        high = middle - 1;
+      } else {
+        bestFit = nextText;
+        low = middle + 1;
+      }
+    }
+
+    if (bestFit) {
+      paragraph.replaceChildren();
+      appendNarrativeWithYearHighlights(paragraph, bestFit);
+      break;
+    }
+
+    paragraph.remove();
+  }
+}
+
+function buildClampedParagraphText(text, maxLength) {
+  const value = String(text || "");
+  if (!value) return "";
+  const safeLength = Math.max(0, Math.min(value.length, Math.floor(maxLength)));
+  if (safeLength >= value.length) {
+    return value;
+  }
+  const shortText = value.slice(0, safeLength).trimEnd();
+  return shortText ? `${shortText}…` : "…";
 }
 
 function buildShareCardFilename(card, format = "portrait") {
