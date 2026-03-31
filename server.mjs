@@ -16,9 +16,6 @@ const WORMSOFT_BASE_URL =
 
 const GEMINI_API_KEY = process.env.GEMINI_API_KEY;
 const GEMINI_MODEL = process.env.GEMINI_MODEL || "gemini-2.5-flash";
-const GEMINI_IMAGE_MODEL =
-  process.env.GEMINI_IMAGE_MODEL || "imagen-4.0-fast-generate-001";
-const GEMINI_ENABLE_IMAGES = process.env.GEMINI_ENABLE_IMAGES !== "false";
 const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
@@ -76,7 +73,7 @@ const MODEL_CATALOG = [
     model: GEMINI_MODEL,
     baseUrl: GEMINI_BASE_URL,
     apiKey: GEMINI_API_KEY,
-    enableImages: GEMINI_ENABLE_IMAGES,
+    enableImages: false,
   },
   {
     id: "groq-llama-3.1-70b",
@@ -230,10 +227,6 @@ function buildHeaders(modelConfig) {
   return headers;
 }
 
-function isImagesEnabled() {
-  return Boolean(GEMINI_API_KEY) && GEMINI_ENABLE_IMAGES;
-}
-
 function pickModelConfig(requestedId) {
   const requested = getModelById(requestedId);
   if (requested && isModelEnabled(requested)) {
@@ -380,11 +373,7 @@ async function handleAltHistory(req, res) {
       temperature: modeConfig.temperature,
     });
 
-    if (isImagesEnabled() && scenario.imagePrompts.length > 0) {
-      scenario.images = await generateScenarioImages(scenario.imagePrompts);
-    } else {
-      scenario.images = [];
-    }
+    scenario.images = [];
 
     sendJson(res, 200, {
       scenario: {
@@ -689,7 +678,6 @@ ${languageInstruction}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
 - "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
 Требования:
@@ -717,7 +705,6 @@ ${languageInstruction}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
 - "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
 Требования:
@@ -745,7 +732,6 @@ ${languageInstruction}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
 - "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
 Требования:
@@ -773,7 +759,6 @@ ${languageInstruction}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
 - "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
 Требования:
@@ -802,7 +787,6 @@ ${languageInstruction}
   Годы должны идти по возрастанию и быть конкретными числами.
   Последняя точка timeline должна быть про текущий год ${currentYear}.
 - "branches": массив из 2-3 коротких вариантов продолжения (действие/развилка).
-- "image_prompts": массив из 1-2 подробных промптов для иллюстраций альтернативного мира (без текста на изображении).
 - "share_card": объект для сторис:
   {"title": string, "subtitle": string, "items": [{"year": number, "text": string}], "footer": string}
 Требования:
@@ -827,7 +811,6 @@ function parseScenarioResponse(modelText, currentYear, event, language) {
   );
   const timeline = normalizeTimeline(parsed?.timeline, currentYear, narrative, language);
   const branches = normalizeBranches(parsed?.branches, language);
-  const imagePrompts = normalizeImagePrompts(parsed?.image_prompts, narrative, language);
   const shareCard = normalizeShareCard(parsed?.share_card, {
     narrative,
     timeline,
@@ -840,7 +823,6 @@ function parseScenarioResponse(modelText, currentYear, event, language) {
     narrative,
     timeline,
     branches,
-    imagePrompts,
     images: [],
     shareCard,
   };
@@ -1097,33 +1079,6 @@ function normalizeBranches(rawBranches, language) {
   return unique.slice(0, 3);
 }
 
-function normalizeImagePrompts(rawPrompts, narrative, language) {
-  const prompts = Array.isArray(rawPrompts)
-    ? rawPrompts
-        .map((prompt) => pickString(prompt))
-        .filter(Boolean)
-        .slice(0, 2)
-    : [];
-
-  if (prompts.length > 0) {
-    return prompts;
-  }
-
-  const summary = (pickString(narrative) || "").slice(0, 260);
-  return [
-    byLanguage(
-      language,
-      `Альтернативная история, кинематографичная сцена, исторический антураж, высокая детализация: ${summary}`,
-      `Alternate history, cinematic scene, historical atmosphere, high detail: ${summary}`
-    ),
-    byLanguage(
-      language,
-      "Панорама города в альтернативном мире, исторический реализм, широкоугольный кадр, реалистичный свет",
-      "City panorama in an alternate world, historical realism, wide-angle shot, realistic lighting"
-    ),
-  ];
-}
-
 function normalizeShareCard(rawCard, { narrative, timeline, currentYear, event, language }) {
   const fallback = buildFallbackShareCard({ narrative, timeline, currentYear, event, language });
   const forcedTitle = pickString(event) || fallback.title;
@@ -1262,120 +1217,6 @@ function buildCardSubtitle(narrative, language) {
   return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
 }
 
-async function generateScenarioImages(prompts) {
-  const tasks = prompts.slice(0, 2).map((prompt) => generateSingleImage(prompt));
-  const results = await Promise.all(tasks);
-  const generated = results.filter(Boolean);
-
-  if (generated.length === prompts.slice(0, 2).length) {
-    return generated;
-  }
-
-  const withFallback = [...generated];
-  for (const prompt of prompts.slice(0, 2)) {
-    if (withFallback.length >= 2) break;
-
-    const exists = withFallback.some((img) => img.prompt === prompt);
-    if (exists) continue;
-
-    withFallback.push({
-      src: buildFallbackSvgDataUri(prompt),
-      prompt,
-    });
-  }
-
-  return withFallback.slice(0, 2);
-}
-
-async function generateSingleImage(prompt) {
-  try {
-    const response = await fetch(
-      `${GEMINI_BASE_URL.replace(/\/+$/, "")}/images/generations`,
-      {
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          Authorization: `Bearer ${GEMINI_API_KEY}`,
-        },
-        body: JSON.stringify({
-          model: GEMINI_IMAGE_MODEL,
-          prompt,
-          size: "1024x1024",
-          n: 1,
-        }),
-      }
-    );
-
-    const data = await response.json();
-    if (!response.ok) {
-      console.warn("Image generation failed:", data?.error?.message || response.statusText);
-      return null;
-    }
-
-    const image = extractImagePayload(data);
-    if (!image) {
-      return null;
-    }
-
-    if (image.url) {
-      return { src: image.url, prompt };
-    }
-
-    return { src: `data:${image.mimeType};base64,${image.base64}`, prompt };
-  } catch (error) {
-    console.warn("Image generation error:", error?.message || error);
-    return null;
-  }
-}
-
-function extractImagePayload(data) {
-  const candidates = [
-    data?.data?.[0],
-    data?.images?.[0],
-    data?.output?.[0],
-    data?.result?.[0],
-    data,
-  ];
-
-  for (const item of candidates) {
-    if (!item) continue;
-
-    if (typeof item?.url === "string" && item.url) {
-      return { url: item.url };
-    }
-
-    if (typeof item?.b64_json === "string" && item.b64_json) {
-      return { base64: item.b64_json, mimeType: "image/png" };
-    }
-
-    if (typeof item?.base64 === "string" && item.base64) {
-      return { base64: item.base64, mimeType: "image/png" };
-    }
-
-    if (typeof item?.image_base64 === "string" && item.image_base64) {
-      return { base64: item.image_base64, mimeType: "image/png" };
-    }
-
-    const inline = item?.inline_data;
-    if (typeof inline?.data === "string" && inline.data) {
-      return { base64: inline.data, mimeType: inline.mime_type || "image/png" };
-    }
-  }
-
-  const inlinePart = data?.candidates?.[0]?.content?.parts?.find(
-    (part) => typeof part?.inline_data?.data === "string" && part.inline_data.data
-  );
-
-  if (inlinePart) {
-    return {
-      base64: inlinePart.inline_data.data,
-      mimeType: inlinePart.inline_data.mime_type || "image/png",
-    };
-  }
-
-  return null;
-}
-
 function pickString(value) {
   if (typeof value !== "string") {
     return "";
@@ -1392,65 +1233,6 @@ function normalizeYear(value) {
     return null;
   }
   return year;
-}
-
-function buildFallbackSvgDataUri(prompt) {
-  const hash = hashText(prompt);
-  const topColor = `hsl(${hash % 360} 62% 72%)`;
-  const bottomColor = `hsl(${(hash + 50) % 360} 48% 40%)`;
-  const sunColor = `hsl(${(hash + 190) % 360} 78% 76%)`;
-  const skyline = createSkylinePath(hash);
-  const caption = escapeXml(prompt.slice(0, 96));
-
-  const svg = `
-<svg xmlns="http://www.w3.org/2000/svg" width="1024" height="768" viewBox="0 0 1024 768">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
-      <stop offset="0%" stop-color="${topColor}"/>
-      <stop offset="100%" stop-color="${bottomColor}"/>
-    </linearGradient>
-    <linearGradient id="ground" x1="0" y1="0" x2="1" y2="0">
-      <stop offset="0%" stop-color="rgba(25,20,18,0.78)"/>
-      <stop offset="100%" stop-color="rgba(12,10,9,0.88)"/>
-    </linearGradient>
-  </defs>
-  <rect width="1024" height="768" fill="url(#bg)"/>
-  <circle cx="${170 + (hash % 640)}" cy="${120 + (hash % 130)}" r="84" fill="${sunColor}" opacity="0.58"/>
-  <path d="${skyline}" fill="url(#ground)"/>
-  <rect x="0" y="646" width="1024" height="122" fill="rgba(8,8,8,0.42)"/>
-  <text x="44" y="704" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="28" fill="rgba(255,255,255,0.87)">
-    Alternate World
-  </text>
-  <text x="44" y="738" font-family="Trebuchet MS, Segoe UI, sans-serif" font-size="20" fill="rgba(255,255,255,0.78)">
-    ${caption}
-  </text>
-</svg>`.trim();
-
-  return `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svg)}`;
-}
-
-function createSkylinePath(seed) {
-  let x = 0;
-  let path = "M0 620 ";
-  const base = 620;
-
-  while (x < 1024) {
-    const width = 26 + ((seed + x * 13) % 48);
-    const height = 100 + ((seed + x * 19) % 230);
-    path += `L${x} ${base} L${x} ${base - height} L${Math.min(1024, x + width)} ${base - height} L${Math.min(1024, x + width)} ${base} `;
-    x += width + 6;
-  }
-
-  path += "L1024 768 L0 768 Z";
-  return path;
-}
-
-function hashText(text) {
-  let hash = 0;
-  for (let i = 0; i < text.length; i += 1) {
-    hash = (hash * 31 + text.charCodeAt(i)) >>> 0;
-  }
-  return hash;
 }
 
 function escapeXml(value) {

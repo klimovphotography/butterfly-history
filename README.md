@@ -9,8 +9,7 @@
 - Стек очень простой: `Node.js + server.mjs + чистый HTML/CSS/JS`.
 - Фронтенд без React, без сборщика, без TypeScript.
 - Сервер тоже без Express: используется встроенный `node:http`.
-- Генерация идёт через OpenAI-совместимые `chat/completions` API разных провайдеров.
-- Если есть `GEMINI_API_KEY`, сервер дополнительно умеет генерировать 1-2 изображения.
+- Генерация текста идёт через OpenAI-совместимые `chat/completions` API разных провайдеров.
 - Карточка сценария рендерится на клиенте и может открываться как `PNG`.
 - Сценарии можно шарить:
   - через полный payload в `?scenario=...`
@@ -55,8 +54,6 @@
 - `WORMSOFT_BASE_URL`
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
-- `GEMINI_IMAGE_MODEL`
-- `GEMINI_ENABLE_IMAGES`
 - `GEMINI_BASE_URL`
 - `GROQ_API_KEY`
 - `GROQ_MODEL`
@@ -95,8 +92,6 @@ WORMSOFT_BASE_URL=https://ai.wormsoft.ru/api/gpt
 
 GEMINI_API_KEY=ваш_ключ
 GEMINI_MODEL=gemini-2.5-flash
-GEMINI_IMAGE_MODEL=imagen-4.0-fast-generate-001
-GEMINI_ENABLE_IMAGES=true
 
 GROQ_API_KEY=ваш_ключ
 OPENROUTER_API_KEY=ваш_ключ
@@ -140,7 +135,7 @@ npm run dev
 4. Фронтенд отправляет `POST /api/alt-history`.
 5. Сервер выбирает модель и при необходимости делает failover (переключение на запасной провайдер).
 6. Модель возвращает JSON со сценарием.
-7. Сервер нормализует ответ, может дорисовать картинки, и отправляет фронтенду единый объект `scenario`.
+7. Сервер нормализует ответ и отправляет фронтенду единый объект `scenario`.
 8. Фронтенд строит share-card.
 9. После генерации фронтенд пытается синхронизировать URL с короткой ссылкой.
 
@@ -156,10 +151,7 @@ npm run dev
       { "year": 1924, "title": "Перелом", "details": "..." }
     ],
     "branches": ["...", "..."],
-    "imagePrompts": ["...", "..."],
-    "images": [
-      { "src": "https://..." , "prompt": "..." }
-    ],
+    "images": [],
     "shareCard": {
       "title": "Что если ...?",
       "subtitle": "Короткий хук",
@@ -289,8 +281,6 @@ npm run dev
   - чинит timeline, даже если модель вернула мусор или неполный массив
 - `normalizeShareCard(...)`
   - принудительно ставит заголовок карточки из исходного `event`
-- `generateScenarioImages(...)`
-  - если включены изображения, просит Gemini сгенерировать 1-2 картинки
 
 ## Логика фронтенда
 

@@ -1740,11 +1740,16 @@ function normalizeImages(rawImages) {
       return null;
     })
     .filter((item) => item && isImageSrc(item.src))
-    .slice(0, 2);
+    .slice(0, 1);
 }
 
 function isImageSrc(src) {
-  return src.startsWith("http://") || src.startsWith("https://") || src.startsWith("data:image/");
+  return (
+    src.startsWith("http://") ||
+    src.startsWith("https://") ||
+    src.startsWith("data:image/") ||
+    src.startsWith("/")
+  );
 }
 
 function parseYear(value) {

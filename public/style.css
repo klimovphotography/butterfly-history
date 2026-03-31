@@ -327,6 +327,8 @@ button:disabled {
   padding: 0;
   border: none;
   background: transparent;
+  display: grid;
+  gap: 14px;
 }
 
 .badge {
@@ -400,7 +402,7 @@ button:disabled {
 }
 
 .share-card {
-  margin: 12px 0 4px;
+  margin: 0 0 4px;
   display: grid;
   gap: 12px;
 }
