@@ -99,6 +99,24 @@ const TRANSLATIONS = {
     heroTitle: "Эффект Бабочки",
     heroSubtitle:
       "Напишите реальное историческое событие, а ИИ построит гипотезу: что было бы, если все пошло иначе.",
+    navScenario: "Сценарий",
+    navModes: "Режимы",
+    navSupport: "Поддержка",
+    heroPrimaryLink: "Создать сценарий",
+    heroSecondaryLink: "Поддержать проект",
+    heroFeature1: "Тот же генератор, но с более сильной подачей",
+    heroFeature2: "5 режимов альтернативной истории",
+    heroFeature3: "Готовые карточки для шаринга",
+    panelLabel: "Scenario Engine",
+    panelTitle: "Современная подача для вашего генератора",
+    panelCopy:
+      "Темный интерфейс, выразительные акценты и ощущение AI-продукта без изменений в механике сайта.",
+    panelLine1: "event: Карибский кризис не удалось остановить",
+    panelLine2: "mode: realism",
+    panelLine3: "output: alternate timeline initialized",
+    statLabel1: "режимов генерации",
+    statLabel2: "переключение языка",
+    statLabel3: "экспорт карточек",
     homeAria: "Главная",
     eventLabel: "Историческое событие",
     eventPlaceholder:
@@ -173,6 +191,24 @@ const TRANSLATIONS = {
     heroTitle: "Butterfly Effect",
     heroSubtitle:
       "Describe a real historical event, and AI will build a hypothesis of how the world could have changed.",
+    navScenario: "Scenario",
+    navModes: "Modes",
+    navSupport: "Support",
+    heroPrimaryLink: "Create Scenario",
+    heroSecondaryLink: "Support The Project",
+    heroFeature1: "The same generator with a much stronger product feel",
+    heroFeature2: "5 alternate-history modes",
+    heroFeature3: "Ready-made cards for sharing",
+    panelLabel: "Scenario Engine",
+    panelTitle: "A modern product look for your generator",
+    panelCopy:
+      "Dark visuals, stronger accents, and an AI-product feel without changing the site's mechanics.",
+    panelLine1: "event: the Cuban Missile Crisis was never de-escalated",
+    panelLine2: "mode: realism",
+    panelLine3: "output: alternate timeline initialized",
+    statLabel1: "generation modes",
+    statLabel2: "language switch",
+    statLabel3: "card export",
     homeAria: "Home",
     eventLabel: "Historical Event",
     eventPlaceholder:
@@ -430,9 +466,27 @@ function applyTranslations() {
   document.documentElement.lang = currentLanguage;
   document.title = t("pageTitle");
 
+  setTextById("topbar-brand", t("pageTitle"));
   setTextById("hero-eyebrow", t("heroEyebrow"));
   setTextById("hero-title-text", t("heroTitle"));
   setTextById("hero-subtitle", t("heroSubtitle"));
+  setTextById("nav-scenario", t("navScenario"));
+  setTextById("nav-modes", t("navModes"));
+  setTextById("nav-support", t("navSupport"));
+  setTextById("hero-primary-link", t("heroPrimaryLink"));
+  setTextById("hero-secondary-link", t("heroSecondaryLink"));
+  setTextById("hero-feature-1", t("heroFeature1"));
+  setTextById("hero-feature-2", t("heroFeature2"));
+  setTextById("hero-feature-3", t("heroFeature3"));
+  setTextById("panel-label", t("panelLabel"));
+  setTextById("panel-title", t("panelTitle"));
+  setTextById("panel-copy", t("panelCopy"));
+  setTextById("panel-line-1", t("panelLine1"));
+  setTextById("panel-line-2", t("panelLine2"));
+  setTextById("panel-line-3", t("panelLine3"));
+  setTextById("stat-label-1", t("statLabel1"));
+  setTextById("stat-label-2", t("statLabel2"));
+  setTextById("stat-label-3", t("statLabel3"));
   setTextById("event-label", t("eventLabel"));
   setTextById("donate-eyebrow", t("donateEyebrow"));
   setTextById("donate-title", t("donateTitle"));
@@ -1301,7 +1355,7 @@ async function renderShareCardAsset(target, format) {
   const exportSize = CARD_CAPTURE_SIZES[captureFormat] || CARD_CAPTURE_SIZES.portrait;
   const layoutSize = CARD_CAPTURE_LAYOUT_SIZES[captureFormat] || exportSize;
   const sourceWidth = Math.max(1, Math.round(layoutSize.width));
-  const sourceHeight = Math.max(1, Math.round(layoutSize.height));
+  const baseSourceHeight = Math.max(1, Math.round(layoutSize.height));
   const qualityScale = Math.max(1, exportSize.width / sourceWidth);
 
   const host = document.createElement("div");
@@ -1315,14 +1369,16 @@ async function renderShareCardAsset(target, format) {
   clone.dataset.format = captureFormat;
   clone.classList.add("share-card-capture");
   clone.style.width = `${sourceWidth}px`;
-  clone.style.height = `${sourceHeight}px`;
+  clone.style.height = "auto";
+  clone.style.minHeight = `${baseSourceHeight}px`;
   clone.style.maxWidth = "none";
   clone.style.maxHeight = "none";
-  clone.style.aspectRatio = `${sourceWidth} / ${sourceHeight}`;
+  clone.style.aspectRatio = "auto";
 
   host.append(clone);
   document.body.append(host);
-  fitShareCardCloneForCapture(clone);
+  const sourceHeight = Math.max(baseSourceHeight, Math.ceil(clone.scrollHeight));
+  clone.style.height = `${sourceHeight}px`;
 
   try {
     const canvas = await window.html2canvas(clone, {
@@ -1342,69 +1398,6 @@ async function renderShareCardAsset(target, format) {
   } finally {
     host.remove();
   }
-}
-
-function fitShareCardCloneForCapture(frame) {
-  if (!frame) return;
-  const body = frame.querySelector(".share-card-body");
-  const story = frame.querySelector(".share-card-story");
-  if (!body || !story) return;
-
-  const hasOverflow = () => {
-    const frameOverflow = frame.scrollHeight - frame.clientHeight > 1;
-    const storyOverflow = story.scrollHeight - body.clientHeight > 1;
-    return frameOverflow || storyOverflow;
-  };
-
-  if (!hasOverflow()) return;
-
-  const paragraphs = Array.from(story.querySelectorAll(".share-card-paragraph"));
-  for (let index = paragraphs.length - 1; index >= 0 && hasOverflow(); index -= 1) {
-    const paragraph = paragraphs[index];
-    const originalText = String(paragraph.textContent || "").trim();
-
-    if (!originalText) {
-      paragraph.remove();
-      continue;
-    }
-
-    let low = 0;
-    let high = originalText.length;
-    let bestFit = "";
-
-    while (low <= high) {
-      const middle = Math.floor((low + high) / 2);
-      const nextText = buildClampedParagraphText(originalText, middle);
-      paragraph.replaceChildren();
-      appendNarrativeWithYearHighlights(paragraph, nextText);
-
-      if (hasOverflow()) {
-        high = middle - 1;
-      } else {
-        bestFit = nextText;
-        low = middle + 1;
-      }
-    }
-
-    if (bestFit) {
-      paragraph.replaceChildren();
-      appendNarrativeWithYearHighlights(paragraph, bestFit);
-      break;
-    }
-
-    paragraph.remove();
-  }
-}
-
-function buildClampedParagraphText(text, maxLength) {
-  const value = String(text || "");
-  if (!value) return "";
-  const safeLength = Math.max(0, Math.min(value.length, Math.floor(maxLength)));
-  if (safeLength >= value.length) {
-    return value;
-  }
-  const shortText = value.slice(0, safeLength).trimEnd();
-  return shortText ? `${shortText}…` : "…";
 }
 
 function buildShareCardFilename(card, format = "portrait") {

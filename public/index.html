@@ -103,33 +103,31 @@
   </head>
   <body>
     <main class="page">
-      <div class="top-actions">
-        <button
-          id="language-toggle"
-          type="button"
-          class="random-btn language-btn"
-          aria-label="Переключить язык"
-          title="Переключить язык"
-        >
-          Язык: RU
-        </button>
+      <div class="page-shell">
+        <header class="topbar">
+          <a class="brand-badge" href="/" aria-label="Butterfly History">
+            <span class="brand-badge-mark">
+              <img src="/logo.png" alt="" width="24" height="24" />
+            </span>
+            <span id="topbar-brand" class="brand-badge-text">Эффект Бабочки</span>
+          </a>
+
+          <div class="top-actions">
+            <button
+              id="language-toggle"
+              type="button"
+              class="random-btn language-btn"
+              aria-label="Переключить язык"
+              title="Переключить язык"
+            >
+              Язык: RU
+            </button>
+          </div>
+        </header>
+
       </div>
 
-      <section class="hero">
-        <p id="hero-eyebrow" class="eyebrow">Альтернативная история</p>
-        <h1 class="hero-title">
-          <a class="hero-logo" href="/" aria-label="Главная">
-            <img src="/logo.png" alt="" width="32" height="32" />
-          </a>
-          <span id="hero-title-text">Эффект Бабочки</span>
-        </h1>
-        <p id="hero-subtitle" class="subtitle">
-          Напишите реальное историческое событие, а ИИ построит гипотезу: что
-          было бы, если все пошло иначе.
-        </p>
-      </section>
-
-      <section class="chat-card">
+      <section class="chat-card" id="workspace">
         <form id="event-form" class="form">
           <label id="event-label" for="event-input">Историческое событие</label>
           <textarea
@@ -140,6 +138,9 @@
             required
           ></textarea>
           <div class="input-actions">
+            <button id="submit-btn" type="submit">
+              Смоделировать
+            </button>
           </div>
         </form>
 
@@ -178,9 +179,6 @@
                   Юмор
                 </button>
               </div>
-              <button id="submit-btn" type="submit" form="event-form">
-                Смоделировать
-              </button>
             </div>
           </div>
           <div id="messages" class="messages" aria-live="polite"></div>
