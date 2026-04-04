@@ -1,5 +1,5 @@
 /**
- * card.mjs — генерирует PNG-карточку сценария (1080×1080).
+ * card.mjs — генерирует PNG-карточку сценария.
  * Использует @resvg/resvg-js из node_modules родительского проекта.
  */
 
@@ -8,14 +8,12 @@ import { Resvg } from '@resvg/resvg-js';
 // ─── Constants ───────────────────────────────────────────────────────────────
 
 const W = 1080;
-const H = 1080;
+const MIN_H = 1080;
 const PAD = 64;
 const CONTENT_W = W - PAD * 2; // 952px
 
 // Use single quotes inside SVG attribute values — double quotes break XML parsing
 const FONTS = "Helvetica Neue, Liberation Sans, Arial, sans-serif";
-const MONO_FONTS = "Courier New, Liberation Mono, monospace";
-
 const MODE_STYLES = {
   realism:    { badge: 'rgba(124,225,217,0.15)', badgeText: '#7ce1d9', border: 'rgba(124,225,217,0.45)', glow: 'rgba(124,225,217,0.18)' },
   dark:       { badge: 'rgba(200,60,60,0.18)',   badgeText: '#f08080', border: 'rgba(200,60,60,0.45)',   glow: 'rgba(200,60,60,0.12)' },
@@ -35,35 +33,55 @@ function esc(v) {
 }
 
 /**
- * Splits text into lines with maxCharsPerLine width and maxLines limit.
- * Adds "…" to last line if text was truncated.
+ * Splits text into lines using a rough max chars per line heuristic.
  */
-function wrapLines(text, maxChars, maxLines) {
-  const words = String(text ?? '').replace(/\s+/g, ' ').trim().split(' ');
+function wrapLines(text, maxChars) {
+  const normalized = String(text ?? '').replace(/\s+/g, ' ').trim();
+  if (!normalized) return [];
+
+  const words = normalized.split(' ');
   const lines = [];
   let cur = '';
 
   for (const word of words) {
-    if (lines.length >= maxLines) break;
     const attempt = cur ? `${cur} ${word}` : word;
     if (attempt.length <= maxChars) {
       cur = attempt;
     } else {
       if (cur) lines.push(cur);
-      if (lines.length >= maxLines) break;
       cur = word.length > maxChars ? `${word.slice(0, maxChars - 1)}…` : word;
     }
   }
 
-  if (cur && lines.length < maxLines) lines.push(cur);
+  if (cur) lines.push(cur);
 
-  // If truncated, add ellipsis to last line
-  const fullRendered = lines.join(' ');
-  const fullOriginal = words.join(' ');
-  if (fullRendered.length < fullOriginal.length && lines.length > 0) {
-    const last = lines[lines.length - 1];
-    lines[lines.length - 1] = last.length > 3 ? `${last.slice(0, -1)}…` : last;
-  }
+  return lines;
+}
+
+function clampLines(lines, maxLines) {
+  if (lines.length <= maxLines) return lines;
+
+  const clamped = lines.slice(0, maxLines);
+  const last = clamped[clamped.length - 1] || '';
+  clamped[clamped.length - 1] = last.length > 1 ? `${last.slice(0, -1)}…` : '…';
+  return clamped;
+}
+
+function wrapParagraphs(text, maxChars) {
+  const paragraphs = String(text ?? '')
+    .split(/\n\s*\n+/)
+    .map((part) => part.replace(/\s+/g, ' ').trim())
+    .filter(Boolean);
+
+  if (paragraphs.length === 0) return [];
+
+  const lines = [];
+  paragraphs.forEach((paragraph, index) => {
+    lines.push(...wrapLines(paragraph, maxChars));
+    if (index < paragraphs.length - 1) {
+      lines.push('');
+    }
+  });
 
   return lines;
 }
@@ -95,19 +113,22 @@ function renderTextLines(lines, x, baselineY, lineHeight, fontSize, fill, weight
  */
 export function buildCardSvg({ title, subtitle, narrative, modeId = 'realism', modeLabel = 'Реализм' }) {
   const style = MODE_STYLES[modeId] || MODE_STYLES.realism;
+  const safeTitle = String(title ?? '').trim();
+  const safeSubtitle = String(subtitle ?? '').trim();
+  const safeNarrative = String(narrative ?? '');
 
   // ── Title ──────────────────────────────────────────────────────────────────
   // Russian Cyrillic is ~1.3× wider than Latin at same px; use ~22 chars/line for 48px
-  const titleFontSize = title.length > 40 ? 40 : title.length > 28 ? 44 : 48;
+  const titleFontSize = safeTitle.length > 40 ? 40 : safeTitle.length > 28 ? 44 : 48;
   const titleMaxChars = titleFontSize === 48 ? 24 : titleFontSize === 44 ? 26 : 30;
   const titleLineH = Math.round(titleFontSize * 1.22);
-  const titleLines = wrapLines(title, titleMaxChars, 3);
+  const titleLines = clampLines(wrapLines(safeTitle, titleMaxChars), 3);
   const titleBlockH = titleLines.length * titleLineH;
 
   // ── Subtitle ───────────────────────────────────────────────────────────────
   const subtitleFontSize = 25;
   const subtitleLineH = 34;
-  const subtitleLines = wrapLines(subtitle, 54, 2);
+  const subtitleLines = clampLines(wrapLines(safeSubtitle, 50), 2);
   const subtitleBlockH = subtitleLines.length * subtitleLineH;
 
   // ── Layout Y coordinates ───────────────────────────────────────────────────
@@ -115,21 +136,17 @@ export function buildCardSvg({ title, subtitle, narrative, modeId = 'realism', m
   const titleY     = 130;          // baseline of first title line
   const subtitleY  = titleY + titleBlockH + 22;
   const sepY       = subtitleY + subtitleBlockH + 26;
-  const boxY       = sepY + 20;
-  const boxH       = H - boxY - 76; // leave space for footer
+  const boxY       = sepY + 24;
 
   // ── Narrative ──────────────────────────────────────────────────────────────
   const narrativeFontSize = 23;
   const narrativeLineH    = 33;
   const boxInnerPad       = 22;
-  const narrativeMaxLines = Math.floor((boxH - boxInnerPad * 2) / narrativeLineH);
-  const narrativeMaxChars = 56; // chars per line at 23px
-
-  const narrativeLines = wrapLines(
-    String(narrative ?? '').slice(0, 1400), // cap input length
-    narrativeMaxChars,
-    narrativeMaxLines
-  );
+  const narrativeMaxChars = 52; // a bit conservative to avoid visual overflow
+  const narrativeLines = wrapParagraphs(safeNarrative, narrativeMaxChars);
+  const safeNarrativeLines = narrativeLines.length > 0 ? narrativeLines : ['История не получена.'];
+  const narrativeBlockH = safeNarrativeLines.length * narrativeLineH;
+  const boxH = Math.max(360, narrativeBlockH + boxInnerPad * 2);
 
   // ── Mode badge (top-right) ─────────────────────────────────────────────────
   const badgeText   = modeLabel;
@@ -141,11 +158,12 @@ export function buildCardSvg({ title, subtitle, narrative, modeId = 'realism', m
   const badgeTextY  = badgeY + 24;
 
   // ── Footer ─────────────────────────────────────────────────────────────────
-  const footerCenterY = H - 30;
   const footerTagW    = 310;
   const footerTagH    = 46;
+  const footerBottomPad = 34;
+  const H = Math.max(MIN_H, boxY + boxH + footerTagH + footerBottomPad + 42);
   const footerTagX    = (W - footerTagW) / 2;
-  const footerTagY    = footerCenterY - footerTagH + 8;
+  const footerTagY    = H - footerBottomPad - footerTagH;
 
   return `<?xml version="1.0" encoding="UTF-8"?>
 <svg xmlns="http://www.w3.org/2000/svg" width="${W}" height="${H}" viewBox="0 0 ${W} ${H}">
@@ -205,7 +223,7 @@ export function buildCardSvg({ title, subtitle, narrative, modeId = 'realism', m
         fill="rgba(6,6,6,0.60)" stroke="rgba(255,255,255,0.07)" stroke-width="1"/>
 
   <!-- ── Narrative text ── -->
-  ${renderTextLines(narrativeLines, PAD + boxInnerPad, boxY + boxInnerPad + narrativeFontSize, narrativeLineH, narrativeFontSize, 'rgba(255,255,255,0.88)', '400')}
+  ${renderTextLines(safeNarrativeLines, PAD + boxInnerPad, boxY + boxInnerPad + narrativeFontSize, narrativeLineH, narrativeFontSize, 'rgba(255,255,255,0.88)', '400')}
 
   <!-- ── Footer tag ── -->
   <rect x="${footerTagX}" y="${footerTagY}" width="${footerTagW}" height="${footerTagH}" rx="23"
@@ -219,7 +237,7 @@ export function buildCardSvg({ title, subtitle, narrative, modeId = 'realism', m
 // ─── Public entry point ───────────────────────────────────────────────────────
 
 /**
- * Generates a 1080×1080 PNG card and returns it as a Buffer.
+ * Generates a PNG card with fixed width and dynamic height.
  */
 export async function generateCardPng(opts) {
   const svg = buildCardSvg(opts);

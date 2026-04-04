@@ -19,6 +19,7 @@ import {
   consumeRequest,
   refundRequest,
   addPaidRequests,
+  getStoreStats,
   FREE_REQUESTS,
 } from './store.mjs';
 import { generateScenario } from './ai.mjs';
@@ -35,6 +36,17 @@ if (!BOT_TOKEN) {
   console.error('❌  BOT_TOKEN не задан. Добавьте его в .env.');
   process.exit(1);
 }
+
+const ADMIN_USER_IDS = new Set(
+  String(process.env.ADMIN_USER_IDS || '')
+    .split(',')
+    .map((value) => value.trim())
+    .filter(Boolean)
+);
+const SUPPORT_USERNAME = normalizeTelegramUsername(process.env.SUPPORT_USERNAME);
+const SUPPORT_EMAIL = String(process.env.SUPPORT_EMAIL || '').trim();
+const SUPPORT_URL = String(process.env.SUPPORT_URL || '').trim();
+const TERMS_URL = String(process.env.TERMS_URL || '').trim();
 
 const MODE_LABELS = {
   realism:    '⚡ Реализм',
@@ -77,6 +89,12 @@ function cacheScenario(event, mode, context) {
   return id;
 }
 
+function normalizeTelegramUsername(value) {
+  const raw = String(value || '').trim();
+  if (!raw) return '';
+  return raw.startsWith('@') ? raw : `@${raw}`;
+}
+
 // ─── Keyboards ───────────────────────────────────────────────────────────────
 
 const MODE_KEYBOARD = Markup.inlineKeyboard([
@@ -103,7 +121,7 @@ function buildBuyKeyboard() {
 }
 
 function buildBranchKeyboard(branches, scenarioId) {
-  if (!branches?.length) return {};
+  if (!branches?.length) return null;
   const buttons = branches
     .slice(0, 3)
     .map((b, i) => [Markup.button.callback(`↪ ${b}`, `branch:${scenarioId}:${i}`)]);
@@ -121,6 +139,10 @@ function h(text) {
     .replace(/>/g, '&gt;');
 }
 
+function ha(text) {
+  return h(text).replace(/"/g, '&quot;');
+}
+
 /** Highlights 4-digit years in a string using <code> tags */
 function highlightYears(text) {
   return h(text).replace(/\b(1[0-9]{3}|20[0-9]{2}|2100)\b/g, '<code>$1</code>');
@@ -128,11 +150,21 @@ function highlightYears(text) {
 
 /** Formats remaining requests with emoji */
 function remainingLabel(n) {
-  if (n <= 0) return '0 запросов';
-  return `${n} ${n === 1 ? 'запрос' : n < 5 ? 'запроса' : 'запросов'}`;
+  const count = Math.max(0, Number(n) || 0);
+  const mod10 = count % 10;
+  const mod100 = count % 100;
+
+  let word = 'запросов';
+  if (mod10 === 1 && mod100 !== 11) {
+    word = 'запрос';
+  } else if (mod10 >= 2 && mod10 <= 4 && !(mod100 >= 12 && mod100 <= 14)) {
+    word = 'запроса';
+  }
+
+  return `${count} ${word}`;
 }
 
-/** Builds the text message shown below the card image */
+/** Builds the fallback text message when image generation fails */
 function buildNarrativeMessage(scenario, remaining) {
   const title   = h(scenario.event || scenario.shareCard?.title || '');
   const mode    = h(MODE_LABELS[scenario.mode] || '');
@@ -142,6 +174,102 @@ function buildNarrativeMessage(scenario, remaining) {
   return `<b>${title}</b> ${mode}\n\n${narr}\n\n<i>Осталось запросов: ${rem}</i>`;
 }
 
+function buildPhotoReplyOptions(keyboard) {
+  if (!keyboard?.reply_markup) return {};
+  return { reply_markup: keyboard.reply_markup };
+}
+
+function isAdmin(userId) {
+  return ADMIN_USER_IDS.has(String(userId));
+}
+
+function findStarPackage(pkgId) {
+  return STAR_PACKAGES.find((pkg) => pkg.id === pkgId) || null;
+}
+
+function parseInvoicePayload(rawPayload) {
+  try {
+    const parsed = JSON.parse(rawPayload);
+    return parsed && typeof parsed === 'object' ? parsed : {};
+  } catch {
+    return {};
+  }
+}
+
+function validatePayment(rawPayload, currency, totalAmount) {
+  const payload = parseInvoicePayload(rawPayload);
+  const pkg = findStarPackage(payload.pkgId);
+  if (!pkg) {
+    return { ok: false, reason: 'Пакет оплаты не найден.', payload, pkg: null };
+  }
+  if (currency !== 'XTR') {
+    return { ok: false, reason: 'Неверная валюта оплаты.', payload, pkg };
+  }
+  if (totalAmount !== pkg.stars) {
+    return { ok: false, reason: 'Сумма оплаты не совпадает с пакетом.', payload, pkg };
+  }
+  return { ok: true, reason: '', payload, pkg };
+}
+
+async function sendScenarioResponse(ctx, { scenario, remaining, keyboard, cardBuffer }) {
+  if (cardBuffer) {
+    await ctx.replyWithPhoto(
+      { source: cardBuffer, filename: 'scenario.png' },
+      buildPhotoReplyOptions(keyboard)
+    );
+    return;
+  }
+
+  await ctx.replyWithHTML(buildNarrativeMessage(scenario, remaining), keyboard || undefined);
+}
+
+function buildSupportText() {
+  const contacts = [];
+
+  if (SUPPORT_USERNAME) {
+    contacts.push(`Telegram: <code>${h(SUPPORT_USERNAME)}</code>`);
+  }
+  if (SUPPORT_EMAIL) {
+    contacts.push(`Email: <code>${h(SUPPORT_EMAIL)}</code>`);
+  }
+  if (SUPPORT_URL) {
+    contacts.push(`Ссылка: <a href="${ha(SUPPORT_URL)}">${h(SUPPORT_URL)}</a>`);
+  }
+
+  if (contacts.length === 0) {
+    return (
+      `🛟 <b>Поддержка</b>\n\n` +
+      `Контакты поддержки пока не настроены.\n` +
+      `Добавьте в .env хотя бы один из параметров: ` +
+      `<code>SUPPORT_USERNAME</code>, <code>SUPPORT_EMAIL</code> или <code>SUPPORT_URL</code>.`
+    );
+  }
+
+  return (
+    `🛟 <b>Поддержка</b>\n\n` +
+    `Если есть вопросы по оплате, зачислению запросов или работе бота, пишите сюда:\n\n` +
+    `${contacts.join('\n')}`
+  );
+}
+
+function buildTermsText() {
+  let text =
+    `📄 <b>Условия использования</b>\n\n` +
+    `1. Бот генерирует альтернативные исторические сценарии по вашему запросу.\n` +
+    `2. Покупка в боте даёт пакет запросов, а не подписку.\n` +
+    `3. Запрос считается использованным после успешной генерации ответа.\n` +
+    `4. Если произошла техническая ошибка и запрос списался зря, напишите в поддержку.\n` +
+    `5. Сгенерированный контент носит творческий и информационный характер.`;
+
+  if (TERMS_URL) {
+    text += `\n\nПолная версия: <a href="${ha(TERMS_URL)}">${h(TERMS_URL)}</a>`;
+  } else {
+    text += `\n\nЕсли захотите, позже можно вынести полные условия на отдельную страницу сайта и указать <code>TERMS_URL</code> в .env.`;
+  }
+
+  return text;
+}
+
 /** Builds the welcome/start message */
 async function buildWelcomeText(userId) {
   const user = await getUser(userId);
@@ -149,11 +277,13 @@ async function buildWelcomeText(userId) {
   return (
     `👋 Добро пожаловать в <b>Эффект Бабочки</b>!\n\n` +
     `Напишите вопрос в формате <b>«Что если...»</b> — и ИИ построит альтернативную ветку истории с таймлайном и карточкой-картинкой.\n\n` +
-    `<b>У вас ${remainingLabel(remaining)} бесплатно.</b>\n` +
-    `После этого — за ⭐️ Звёзды Telegram.\n\n` +
+    `<b>Сейчас доступно: ${remainingLabel(remaining)}.</b>\n` +
+    `Стартовый пакет: ${remainingLabel(FREE_REQUESTS)} бесплатно, дальше — за ⭐️ Звёзды Telegram.\n\n` +
     `Команды:\n` +
     `/status — остаток запросов\n` +
     `/buy — купить больше запросов\n` +
+    `/support — поддержка\n` +
+    `/terms — условия\n` +
     `/help — справка`
   );
 }
@@ -182,11 +312,13 @@ bot.command('help', async (ctx) => {
     `  🌟 <b>Процветание</b> — оптимистичный мир\n` +
     `  🌀 <b>Безумие</b> — неожиданные повороты\n` +
     `  😄 <b>Юмор</b> — сатирическая история\n\n` +
-    `3. Получите карточку-картинку и полный текст.\n` +
+    `3. Получите карточку-картинку с полным текстом.\n` +
     `4. Выберите ветку продолжения или задайте новый вопрос.\n\n` +
-    `<b>Квота:</b> ${FREE_REQUESTS} запроса бесплатно, затем — ⭐ Звёзды.\n` +
+    `<b>Квота:</b> ${remainingLabel(FREE_REQUESTS)} бесплатно, затем — ⭐ Звёзды.\n` +
     `/status — ваш баланс\n` +
-    `/buy — купить запросы`
+    `/buy — купить запросы\n` +
+    `/support — поддержка\n` +
+    `/terms — условия`
   );
 });
 
@@ -210,6 +342,38 @@ bot.command('status', async (ctx) => {
   }
 
   await ctx.replyWithHTML(text);
+});
+
+bot.command('admin_stats', async (ctx) => {
+  if (!isAdmin(ctx.from.id)) {
+    return ctx.reply('Эта команда доступна только админу.');
+  }
+
+  const stats = await getStoreStats();
+  const text =
+    `🛠 <b>Статистика бота</b>\n\n` +
+    `Пользователей: <b>${stats.totalUsers}</b>\n` +
+    `Новых за 7 дней: <b>${stats.newUsers7d}</b>\n` +
+    `Плативших пользователей: <b>${stats.usersWithPurchases}</b>\n` +
+    `Всего генераций: <b>${stats.totalGenerated}</b>\n` +
+    `Всего покупок: <b>${stats.totalPayments}</b>\n` +
+    `Куплено запросов: <b>${stats.totalPurchasedRequests}</b>\n` +
+    `Осталось бесплатных: <b>${stats.totalFreeLeft}</b>\n` +
+    `Осталось платных: <b>${stats.totalPaidLeft}</b>`;
+
+  await ctx.replyWithHTML(text);
+});
+
+bot.command('support', async (ctx) => {
+  await ctx.replyWithHTML(buildSupportText());
+});
+
+bot.command('paysupport', async (ctx) => {
+  await ctx.replyWithHTML(buildSupportText());
+});
+
+bot.command('terms', async (ctx) => {
+  await ctx.replyWithHTML(buildTermsText());
 });
 
 // ─── /buy ─────────────────────────────────────────────────────────────────────
@@ -280,21 +444,22 @@ bot.action(/^mode:(.+)$/, async (ctx) => {
   );
 
   let scenario;
-  let consumed = false;
+  let consumedSource = null;
 
   try {
     // Deduct quota BEFORE generation so it can't be spammed
-    consumed = await consumeRequest(userId);
-    if (!consumed) {
+    const consumeResult = await consumeRequest(userId);
+    if (!consumeResult.ok) {
       await ctx.editMessageText('У вас закончились запросы. /buy');
       return;
     }
+    consumedSource = consumeResult.source;
 
     scenario = await generateScenario({ event: eventText, mode: modeId });
   } catch (error) {
     console.error('Generation error:', error?.message);
     // Refund on failure
-    if (consumed) await refundRequest(userId);
+    if (consumedSource) await refundRequest(userId, consumedSource);
     await ctx.editMessageText(
       `❌ Ошибка генерации: ${h(error?.message || 'неизвестная ошибка')}.\n\nПопробуйте ещё раз или выберите другой режим.`
     );
@@ -328,37 +493,14 @@ bot.action(/^mode:(.+)$/, async (ctx) => {
   }
 
   const remaining = await getRemainingRequests(userId);
-  const caption   = buildNarrativeMessage(scenario, remaining);
   const keyboard  = buildBranchKeyboard(scenario.branches, scenarioId);
 
   // Delete loading message
   try { await ctx.deleteMessage(); } catch { /* ignore */ }
 
-  // Send card image (or text only if image failed)
-  if (cardBuffer) {
-    await ctx.replyWithPhoto(
-      { source: cardBuffer, filename: 'scenario.png' },
-      { caption: `<b>${h(scenario.event || eventText)}</b>`, parse_mode: 'HTML' }
-    );
-  }
-
-  // Send narrative + branch keyboard
-  await ctx.replyWithHTML(caption, keyboard);
+  await sendScenarioResponse(ctx, { scenario, remaining, keyboard, cardBuffer });
 
   pendingEvents.delete(userId);
-
-  // Nudge to buy if running low
-  if (remaining === 1) {
-    await ctx.replyWithHTML(
-      `⚠️ У вас остался <b>1 запрос</b>. Пополните баланс, чтобы не прерываться. /buy`,
-      { disable_notification: true }
-    );
-  } else if (remaining === 0) {
-    await ctx.replyWithHTML(
-      `⭐️ Запросы закончились. Купите ещё, чтобы продолжить. /buy`,
-      { disable_notification: true }
-    );
-  }
 });
 
 // ─── Branch continuation callback ────────────────────────────────────────────
@@ -393,14 +535,15 @@ bot.action(/^branch:([a-f0-9]+):(\d+)$/, async (ctx) => {
   );
 
   let scenario;
-  let consumed = false;
+  let consumedSource = null;
 
   try {
-    consumed = await consumeRequest(userId);
-    if (!consumed) {
+    const consumeResult = await consumeRequest(userId);
+    if (!consumeResult.ok) {
       await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
       return sendPaywall(ctx);
     }
+    consumedSource = consumeResult.source;
 
     // Build context from cache
     const context = [
@@ -440,27 +583,15 @@ bot.action(/^branch:([a-f0-9]+):(\d+)$/, async (ctx) => {
     } catch { /* fallback to text only */ }
 
     const remaining = await getRemainingRequests(userId);
-    const caption   = buildNarrativeMessage(scenario, remaining);
     const keyboard  = buildBranchKeyboard(scenario.branches, newScenarioId);
 
     await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
 
-    if (cardBuffer) {
-      await ctx.replyWithPhoto(
-        { source: cardBuffer, filename: 'scenario.png' },
-        { caption: `<b>${h(scenario.event || cached.event)}</b>`, parse_mode: 'HTML' }
-      );
-    }
-
-    await ctx.replyWithHTML(caption, keyboard);
-
-    if (remaining === 0) {
-      await ctx.replyWithHTML(`⭐️ Запросы закончились. /buy`, { disable_notification: true });
-    }
+    await sendScenarioResponse(ctx, { scenario, remaining, keyboard, cardBuffer });
 
   } catch (error) {
     console.error('Branch generation error:', error?.message);
-    if (consumed) await refundRequest(userId);
+    if (consumedSource) await refundRequest(userId, consumedSource);
     await ctx.telegram.deleteMessage(ctx.chat.id, loadingMsg.message_id).catch(() => {});
     await ctx.replyWithHTML(`❌ Ошибка: ${h(error?.message || 'неизвестная ошибка')}. Попробуйте ещё раз.`);
   }
@@ -481,7 +612,7 @@ bot.action(/^buy:(.+)$/, async (ctx) => {
   await ctx.answerCbQuery();
 
   const pkgId = ctx.match[1];
-  const pkg   = STAR_PACKAGES.find((p) => p.id === pkgId);
+  const pkg   = findStarPackage(pkgId);
   if (!pkg) return ctx.reply('Пакет не найден.');
 
   // Telegraf 4: replyWithInvoice takes a single object, not positional args
@@ -496,7 +627,21 @@ bot.action(/^buy:(.+)$/, async (ctx) => {
 
 // ─── Pre-checkout: always approve ────────────────────────────────────────────
 
-bot.on('pre_checkout_query', (ctx) => ctx.answerPreCheckoutQuery(true));
+bot.on('pre_checkout_query', (ctx) => {
+  const query = ctx.update.pre_checkout_query;
+  const validation = validatePayment(
+    query.invoice_payload,
+    query.currency,
+    query.total_amount
+  );
+
+  if (!validation.ok) {
+    console.error('Pre-checkout validation failed:', validation.reason);
+    return ctx.answerPreCheckoutQuery(false, validation.reason);
+  }
+
+  return ctx.answerPreCheckoutQuery(true);
+});
 
 // ─── Successful payment ───────────────────────────────────────────────────────
 
@@ -504,15 +649,33 @@ bot.on('message', async (ctx, next) => {
   const payment = ctx.message?.successful_payment;
   if (!payment) return next();
 
-  let payload = {};
-  try { payload = JSON.parse(payment.invoice_payload); } catch { /* ignore */ }
+  const validation = validatePayment(
+    payment.invoice_payload,
+    payment.currency,
+    payment.total_amount
+  );
+  if (!validation.ok || !validation.pkg) {
+    console.error('Successful payment validation failed:', validation.reason);
+    await ctx.replyWithHTML(
+      `⚠️ Оплата пришла, но пакет не удалось подтвердить автоматически.\n` +
+      `Проверьте платёж вручную и при необходимости зачислите запросы сами.`
+    );
+    return;
+  }
 
-  const userId  = payload.userId ?? ctx.from.id;
-  const pkgId   = payload.pkgId;
-  const pkg     = STAR_PACKAGES.find((p) => p.id === pkgId);
-  const count   = pkg?.requests ?? 10;
+  const userId = validation.payload.userId ?? ctx.from.id;
+  const count = validation.pkg.requests;
 
-  await addPaidRequests(userId, count);
+  const paymentResult = await addPaidRequests(userId, count, {
+    telegramChargeId: payment.telegram_payment_charge_id,
+    providerChargeId: payment.provider_payment_charge_id,
+  });
+  if (!paymentResult.added) {
+    await ctx.replyWithHTML(
+      `ℹ️ Этот платёж уже был обработан раньше. Повторно ничего не зачисляю.`
+    );
+    return;
+  }
 
   const remaining = await getRemainingRequests(userId);
   await ctx.replyWithHTML(
@@ -578,5 +741,3 @@ function loadEnv() {
     }
   }
 }
-
-
