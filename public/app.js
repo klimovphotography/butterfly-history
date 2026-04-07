@@ -701,6 +701,7 @@ function buildShareCard(payload) {
   const { card } = payload;
   const wrapper = document.createElement("div");
   wrapper.className = "share-card";
+  wrapper.dataset.modeId = String(payload?.modeId || "realism").trim();
 
   const toolbar = document.createElement("div");
   toolbar.className = "share-card-toolbar";
@@ -717,6 +718,7 @@ function buildShareCard(payload) {
   const frame = document.createElement("div");
   frame.className = "share-card-frame";
   frame.dataset.captureId = crypto.randomUUID();
+  frame.dataset.modeId = wrapper.dataset.modeId;
   frameStage.append(frame);
 
   let selectedFormat = "auto";
@@ -725,6 +727,7 @@ function buildShareCard(payload) {
   const renderFrame = () => {
     const format = resolveCardFormat(selectedFormat);
     frame.dataset.format = format;
+    frame.dataset.modeId = wrapper.dataset.modeId;
     frame.replaceChildren(buildShareCardFrame(payload, format));
 
     for (const [formatId, button] of formatButtons) {
