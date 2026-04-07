@@ -136,7 +136,19 @@ const UI_MODEL_IDS = [
   "huggingface-llama3-8b",
   "aiproductiv-gpt-5.2",
 ];
-const DEFAULT_FAILOVER_ORDER = [...UI_MODEL_IDS];
+const DEFAULT_FAILOVER_ORDER = [
+  "gemini-2.5-flash",
+  "groq-llama-3.1-70b",
+  "openrouter-gemma-2-9b",
+  "mistral-small",
+  "huggingface-llama3-8b",
+  "aiproductiv-gpt-5.2",
+  "wormsoft-gpt-5.2",
+];
+const INVALID_ASSISTANT_RESPONSES = new Set([
+  "no assistant response",
+  "empty assistant response",
+]);
 
 function isModelEnabled(model) {
   if (!model?.apiKey) return false;
@@ -489,6 +501,9 @@ async function generateScenario({
       const modelText = extractTextFromChatCompletion(data);
       if (!modelText) {
         throw new Error("Модель вернула пустой ответ.");
+      }
+      if (isInvalidAssistantResponse(modelText)) {
+        throw new Error("Провайдер вернул служебную заглушку вместо ответа.");
       }
 
       return {
@@ -1258,6 +1273,19 @@ function extractTextFromChatCompletion(data) {
     .filter((part) => typeof part?.text === "string")
     .map((part) => part.text);
   return texts.join("\n").trim();
+}
+
+function isInvalidAssistantResponse(value) {
+  const normalized = String(value || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
+
+  if (!normalized) {
+    return true;
+  }
+
+  return INVALID_ASSISTANT_RESPONSES.has(normalized);
 }
 
 async function serveStaticFile(pathname, res, method = "GET") {
