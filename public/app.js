@@ -3,9 +3,13 @@ const input = document.getElementById("event-input");
 const button = document.getElementById("submit-btn");
 const messages = document.getElementById("messages");
 const randomButton = document.getElementById("random-btn");
+const inputActions = document.querySelector(".input-actions");
 const providerPill = document.getElementById("provider-pill");
 const languageButton = document.getElementById("language-toggle");
 const modeTabs = document.querySelectorAll(".mode-tab");
+const mobileButtonLayout = window.matchMedia("(max-width: 720px)");
+const randomButtonDefaultParent = randomButton?.parentElement || null;
+const randomButtonDefaultNextSibling = randomButton?.nextElementSibling || null;
 
 const CURRENT_YEAR = new Date().getFullYear();
 window.__SCENARIO_PAYLOAD__ = typeof window.__SCENARIO_PAYLOAD__ === "string"
@@ -308,9 +312,16 @@ const CARD_CAPTURE_LAYOUT_SIZES = {
 initModeTabs();
 initLanguageSwitcher();
 setLanguage(currentLanguage, { persist: false });
+syncRandomButtonLayout();
 
 loadProviderMeta();
 void hydrateScenarioFromUrl();
+
+if (typeof mobileButtonLayout.addEventListener === "function") {
+  mobileButtonLayout.addEventListener("change", syncRandomButtonLayout);
+} else if (typeof mobileButtonLayout.addListener === "function") {
+  mobileButtonLayout.addListener(syncRandomButtonLayout);
+}
 
 input.addEventListener("keydown", (event) => {
   if (event.key !== "Enter" || event.shiftKey) return;
@@ -430,6 +441,20 @@ function initLanguageSwitcher() {
 
 function getQuickStartExamples() {
   return QUICK_START_EXAMPLES[currentLanguage] || QUICK_START_EXAMPLES.ru;
+}
+
+function syncRandomButtonLayout() {
+  if (!randomButton || !inputActions || !randomButtonDefaultParent) return;
+
+  if (mobileButtonLayout.matches) {
+    inputActions.insertBefore(randomButton, button);
+    return;
+  }
+
+  randomButtonDefaultParent.insertBefore(
+    randomButton,
+    randomButtonDefaultNextSibling
+  );
 }
 
 function getShareCardCta() {
