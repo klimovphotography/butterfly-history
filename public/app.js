@@ -148,6 +148,8 @@ const TRANSLATIONS = {
       "Это разовый безопасный платеж через CloudTips. Любая сумма помогает ускорять развитие проекта и делать сценарии глубже.",
     donateCta: "Поддержать донатом",
     legalNote: "Важно: это творческая историческая гипотеза, а не установленные факты.",
+    projectLinksTitle: "Telegram проекта",
+    projectTelegramAria: "Telegram-канал проекта",
     loadingScenario: "Моделирую альтернативную ветку...",
     errorPrefix: "Ошибка",
     unknownError: "неизвестная ошибка.",
@@ -240,6 +242,8 @@ const TRANSLATIONS = {
       "This is a one-time secure payment via CloudTips. Any amount helps speed up development and improve scenario depth.",
     donateCta: "Support with a donation",
     legalNote: "Important: this is a creative historical hypothesis, not established fact.",
+    projectLinksTitle: "Project Telegram",
+    projectTelegramAria: "Project Telegram channel",
     loadingScenario: "Modeling an alternate timeline...",
     errorPrefix: "Error",
     unknownError: "unknown error.",
@@ -521,10 +525,12 @@ function applyTranslations() {
   setTextById("donate-note-bottom", t("donateNoteBottom"));
   setTextById("donate-cta", t("donateCta"));
   setTextById("legal-note", t("legalNote"));
+  setTextById("project-links-title", t("projectLinksTitle"));
 
   setAttrById("event-input", "placeholder", t("eventPlaceholder"));
   setAttrById("chat-window", "aria-label", t("chatWindowAria"));
   setAttrById("mode-tabs", "aria-label", t("modeTabsAria"));
+  setAttrById("project-telegram-link", "aria-label", t("projectTelegramAria"));
 
   const homeLink = document.querySelector(".hero-logo");
   if (homeLink) {
