@@ -62,6 +62,22 @@ const STAR_PACKAGES = [
   { id: 'pkg50',  label: '50 сценариев',  requests: 50,  stars: 200 },
 ];
 
+const PUBLIC_BOT_COMMANDS = [
+  { command: 'start',      description: 'Начать заново' },
+  { command: 'help',       description: 'Как пользоваться ботом' },
+  { command: 'status',     description: 'Мой баланс запросов' },
+  { command: 'myid',       description: 'Мой Telegram ID' },
+  { command: 'buy',        description: 'Купить запросы' },
+  { command: 'support',    description: 'Поддержка' },
+  { command: 'paysupport', description: 'Вопросы по оплате' },
+  { command: 'terms',      description: 'Условия использования' },
+];
+
+const ADMIN_BOT_COMMANDS = [
+  ...PUBLIC_BOT_COMMANDS,
+  { command: 'admin_stats', description: 'Статистика бота' },
+];
+
 // ─── In-memory state ──────────────────────────────────────────────────────────
 
 /**
@@ -292,6 +308,22 @@ async function buildWelcomeText(userId) {
 // ─── Bot setup ────────────────────────────────────────────────────────────────
 
 const bot = new Telegraf(BOT_TOKEN);
+
+async function syncTelegramCommands() {
+  await bot.telegram.setMyCommands(PUBLIC_BOT_COMMANDS);
+  await bot.telegram.setChatMenuButton({
+    menuButton: { type: 'commands' },
+  });
+
+  for (const adminId of ADMIN_USER_IDS) {
+    const chatId = Number(adminId);
+    if (!Number.isFinite(chatId)) continue;
+
+    await bot.telegram.setMyCommands(ADMIN_BOT_COMMANDS, {
+      scope: { type: 'chat', chat_id: chatId },
+    });
+  }
+}
 
 // ─── /start ───────────────────────────────────────────────────────────────────
 
@@ -717,7 +749,14 @@ bot.catch((err, ctx) => {
 
 // ─── Launch ───────────────────────────────────────────────────────────────────
 
-bot.launch().then(() => {
+bot.launch().then(async () => {
+  try {
+    await syncTelegramCommands();
+    console.log('✅ Команды Telegram обновлены.');
+  } catch (error) {
+    console.error('⚠️ Не удалось обновить команды Telegram:', error?.message ?? error);
+  }
+
   console.log(`🦋 Butterfly Bot запущен (@${bot.botInfo?.username ?? '?'})`);
 });
 
