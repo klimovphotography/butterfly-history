@@ -281,6 +281,7 @@ async function buildWelcomeText(userId) {
     `Стартовый пакет: ${remainingLabel(FREE_REQUESTS)} бесплатно, дальше — за ⭐️ Звёзды Telegram.\n\n` +
     `Команды:\n` +
     `/status — остаток запросов\n` +
+    `/myid — показать ваш Telegram ID\n` +
     `/buy — купить больше запросов\n` +
     `/support — поддержка\n` +
     `/terms — условия\n` +
@@ -316,6 +317,7 @@ bot.command('help', async (ctx) => {
     `4. Выберите ветку продолжения или задайте новый вопрос.\n\n` +
     `<b>Квота:</b> ${remainingLabel(FREE_REQUESTS)} бесплатно, затем — ⭐ Звёзды.\n` +
     `/status — ваш баланс\n` +
+    `/myid — ваш Telegram ID\n` +
     `/buy — купить запросы\n` +
     `/support — поддержка\n` +
     `/terms — условия`
@@ -344,9 +346,21 @@ bot.command('status', async (ctx) => {
   await ctx.replyWithHTML(text);
 });
 
+bot.command('myid', async (ctx) => {
+  await ctx.replyWithHTML(
+    `🪪 <b>Ваш Telegram ID</b>\n\n` +
+    `<code>${ctx.from.id}</code>\n\n` +
+    `Если хотите открыть доступ к <code>/admin_stats</code>, добавьте этот ID в <code>ADMIN_USER_IDS</code> и перезапустите бота.`
+  );
+});
+
 bot.command('admin_stats', async (ctx) => {
   if (!isAdmin(ctx.from.id)) {
-    return ctx.reply('Эта команда доступна только админу.');
+    return ctx.replyWithHTML(
+      `Эта команда доступна только админу.\n\n` +
+      `Ваш Telegram ID: <code>${ctx.from.id}</code>\n` +
+      `Добавьте его в <code>ADMIN_USER_IDS</code> и перезапустите бота.`
+    );
   }
 
   const stats = await getStoreStats();
