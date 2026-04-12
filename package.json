@@ -5,7 +5,9 @@
   "type": "module",
   "scripts": {
     "start": "node server.mjs",
-    "dev": "node --watch server.mjs"
+    "dev": "node --watch server.mjs",
+    "publish:scenario": "node scripts/publish-scenario.mjs",
+    "review:scenario": "node scripts/publish-scenario.mjs --dry-run"
   },
   "dependencies": {
     "@resvg/resvg-js": "^2.6.2"

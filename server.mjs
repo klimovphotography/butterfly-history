@@ -274,7 +274,7 @@ const REPO_DATA_DIR = path.join(__dirname, "data");
 const RUNTIME_DATA_DIR = resolveRuntimeDataDir();
 const LEGACY_SHARE_LINKS_FILE = path.join(REPO_DATA_DIR, "share-links.json");
 const SHARE_LINKS_FILE = path.join(RUNTIME_DATA_DIR, "share-links.json");
-const PUBLIC_SCENARIOS_FILE = path.join(REPO_DATA_DIR, "public-scenarios.json");
+const PUBLIC_SCENARIOS_FILE = resolvePublicScenariosFile();
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -1606,23 +1606,28 @@ async function loadPublicScenarioLibrary() {
     readShareLinks(),
   ]);
 
-  const scenarios = manifest
+  const normalizedScenarios = manifest
     .map((entry) => normalizePublicScenarioRecord(entry, shareStore[entry?.shareId]))
     .filter(Boolean)
-    .filter((entry) => entry.status === "public")
     .sort(compareByPublishedDesc);
+  const routableScenarios = normalizedScenarios.filter(
+    (entry) => entry.status === "public" || entry.status === "share-only"
+  );
+  const scenarios = routableScenarios.filter((entry) => entry.status === "public");
 
   const bySlug = new Map();
   const byShareId = new Map();
   const byEncodedScenario = new Map();
 
-  for (const scenario of scenarios) {
+  for (const scenario of routableScenarios) {
     bySlug.set(scenario.slug, scenario);
     byShareId.set(scenario.shareId, scenario);
     byEncodedScenario.set(scenario.encodedScenario, scenario);
   }
 
   return {
+    allScenarios: normalizedScenarios,
+    routableScenarios,
     scenarios,
     bySlug,
     byShareId,
@@ -1646,7 +1651,9 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     return null;
   }
 
+  const requestedStatus = normalizePublicationStatus(entry.status || "draft");
   const lang = normalizeLanguage(entry.lang || parsed.lang || parsed.language);
+  const slug = String(entry.slug || "").trim();
   const title = oneLine(entry.title || parsed.event || parsed.title || "");
   const subtitle = oneLine(entry.subtitle || parsed.subtitle || "");
   const narrative = oneLine(parsed.narrative || "");
@@ -1665,11 +1672,25 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
   const tone = oneLine(entry.tone || getModeLabelForLang(parsed.mode, lang));
   const era = oneLine(entry.era || "");
   const wordCount = countWords(narrative);
+  const paragraphs = splitNarrativeIntoParagraphs(narrative);
+  const quality = buildScenarioQualityReport({
+    slug,
+    title,
+    summary,
+    description,
+    narrative,
+    paragraphs,
+    countries,
+    era,
+    themes,
+  });
+  const status = resolveEffectivePublicationStatus(requestedStatus, quality);
 
   return {
-    slug: String(entry.slug || "").trim(),
+    slug,
     shareId: String(entry.shareId || "").trim(),
-    status: String(entry.status || "draft").trim(),
+    requestedStatus,
+    status,
     featured: Boolean(entry.featured),
     popularity: Number(entry.popularity || 0),
     publishedAt,
@@ -1681,7 +1702,7 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     summary,
     description,
     narrative,
-    paragraphs: splitNarrativeIntoParagraphs(narrative),
+    paragraphs,
     countries,
     era,
     themes,
@@ -1690,9 +1711,10 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     relatedSlugs: normalizeTagList(entry.relatedSlugs),
     encodedScenario,
     imageUrl: "",
-    url: `/scenario/${encodeURIComponent(String(entry.slug || "").trim())}`,
+    url: `/scenario/${encodeURIComponent(slug)}`,
     wordCount,
     readingMinutes: Math.max(1, Math.round(wordCount / 170) || 1),
+    quality,
   };
 }
 
@@ -1876,7 +1898,7 @@ function buildPublicScenarioPageMeta(scenario, siteUrl) {
     imageUrl,
     locale: scenario.lang === "en" ? "en_US" : "ru_RU",
     htmlLang: scenario.lang,
-    robots: "index,follow",
+    robots: scenario.status === "public" ? "index,follow" : "noindex,follow",
     ogType: "article",
     structuredData: buildPublicScenarioStructuredData(siteUrl, scenario, imageUrl),
   };
@@ -2417,6 +2439,62 @@ function normalizeTagList(values) {
   return single ? [single] : [];
 }
 
+function buildScenarioQualityReport({
+  slug,
+  title,
+  summary,
+  description,
+  narrative,
+  paragraphs,
+  countries,
+  era,
+  themes,
+}) {
+  const routeIssues = [];
+  const publicIssues = [];
+  const normalizedSlug = String(slug || "").trim();
+  const paragraphList = Array.isArray(paragraphs) ? paragraphs.filter(Boolean) : [];
+  const wordCount = countWords(narrative);
+
+  if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(normalizedSlug)) {
+    routeIssues.push("slug");
+  }
+  if (title.length < 12) {
+    routeIssues.push("title");
+  }
+  if (wordCount < 140) {
+    routeIssues.push("narrative");
+  }
+  if (paragraphList.length < 3) {
+    routeIssues.push("paragraphs");
+  }
+
+  if (summary.length < 90) {
+    publicIssues.push("summary");
+  }
+  if (description.length < 90) {
+    publicIssues.push("description");
+  }
+  if (!countries.length) {
+    publicIssues.push("countries");
+  }
+  if (!era) {
+    publicIssues.push("era");
+  }
+  if (!themes.length) {
+    publicIssues.push("themes");
+  }
+
+  return {
+    wordCount,
+    paragraphCount: paragraphList.length,
+    routeIssues,
+    publicIssues,
+    isRoutable: routeIssues.length === 0,
+    isPublicReady: routeIssues.length === 0 && publicIssues.length === 0,
+  };
+}
+
 function splitNarrativeIntoParagraphs(narrative) {
   const clean = oneLine(narrative);
   if (!clean) return [];
@@ -2470,6 +2548,33 @@ function compareByPopularityDesc(left, right) {
   return compareByPublishedDesc(left, right);
 }
 
+function normalizePublicationStatus(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "public") return "public";
+  if (raw === "share-only" || raw === "share_only" || raw === "shareonly") {
+    return "share-only";
+  }
+  return "draft";
+}
+
+function resolveEffectivePublicationStatus(requestedStatus, quality) {
+  if (requestedStatus === "public") {
+    if (quality.isPublicReady) {
+      return "public";
+    }
+    if (quality.isRoutable) {
+      return "share-only";
+    }
+    return "draft";
+  }
+
+  if (requestedStatus === "share-only") {
+    return quality.isRoutable ? "share-only" : "draft";
+  }
+
+  return "draft";
+}
+
 function normalizeOptionalLanguage(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "en") return "en";
@@ -2490,6 +2595,17 @@ function resolveRuntimeDataDir() {
   const configured = String(process.env.DATA_DIR || "").trim();
   if (!configured) {
     return path.join(__dirname, ".runtime");
+  }
+  if (path.isAbsolute(configured)) {
+    return configured;
+  }
+  return path.resolve(process.cwd(), configured);
+}
+
+function resolvePublicScenariosFile() {
+  const configured = String(process.env.PUBLIC_SCENARIOS_FILE || "").trim();
+  if (!configured) {
+    return path.join(REPO_DATA_DIR, "public-scenarios.json");
   }
   if (path.isAbsolute(configured)) {
     return configured;

@@ -24,15 +24,25 @@ Date: 2026-04-12
   - theme
   - tone
 - Updated dynamic sitemap to include archive and public scenarios only
+- Added publication statuses:
+  - `draft`
+  - `share-only`
+  - `public`
+- Added quality gate for `public` scenarios
+- Added CLI publication flow:
+  - `npm run review:scenario -- --share-id <id>`
+  - `npm run publish:scenario -- --share-id <id> ...`
 
 ## Content workflow
 
 - runtime `share-links.json` remains the storage for generated/shareable scenario payloads
 - `data/public-scenarios.json` is now the publication gate
+- `draft` entries do not get a route and do not appear in archive/sitemap
+- `share-only` entries get a clean `/scenario/<slug>` URL, but stay `noindex,follow`
 - Only entries present in `public-scenarios.json` with `status: "public"` are:
-  - routable at `/scenario/<slug>`
   - included in the archive
   - included in `sitemap.xml`
+- If an entry claims `status: "public"` but fails the quality gate, the server downgrades it out of the public archive automatically
 
 ## Validation completed locally
 
@@ -47,4 +57,10 @@ Date: 2026-04-12
 
 ## Next sensible step
 
-- Add a lightweight editorial UI or CLI to promote a share-link entry into `public-scenarios.json` without manual JSON editing.
+- Add analytics events for:
+  - generation started
+  - generation completed
+  - archive page viewed
+  - scenario page viewed
+  - donation clicked
+  - Telegram clicked

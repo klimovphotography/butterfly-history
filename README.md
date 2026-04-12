@@ -435,6 +435,53 @@ npm run dev
 - это нормально
 - её создаёт сервер
 
+## Публикация сценариев
+
+Теперь у сценариев есть 3 статуса:
+
+- `draft`
+  - это черновик
+  - у него нет публичного URL
+- `share-only`
+  - у него есть clean URL (`/scenario/<slug>`)
+  - но он не попадает в архив и поиск
+- `public`
+  - попадает в архив
+  - попадает в `sitemap.xml`
+  - может индексироваться
+
+### Проверка перед публикацией
+
+Ничего не записывает, только показывает, пройдет ли сценарий quality gate:
+
+```bash
+npm run review:scenario -- --share-id FopiMOU
+```
+
+### Публикация в архив
+
+Пример публикации хорошего сценария:
+
+```bash
+npm run publish:scenario -- --share-id FopiMOU --status public --country Россия --era "XIX век" --theme геополитика --theme империи --featured
+```
+
+### Публикация как share-only
+
+Если нужен clean URL без индексации:
+
+```bash
+npm run publish:scenario -- --share-id FopiMOU --status share-only
+```
+
+### Где хранится публикация
+
+- runtime-сценарии:
+  - `.runtime/share-links.json`
+  - или `DATA_DIR/share-links.json` на VPS
+- кураторский manifest публикаций:
+  - `data/public-scenarios.json`
+
 ## VPS и деплой
 
 Для безопасного деплоя на VPS важно разделять:
