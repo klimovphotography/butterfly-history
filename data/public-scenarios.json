@@ -1,0 +1,146 @@
+[
+  {
+    "slug": "rossiya-ne-prodala-alyasku",
+    "shareId": "FopiMOU",
+    "status": "public",
+    "featured": true,
+    "publishedAt": "2026-04-12",
+    "popularity": 94,
+    "summary": "Россия срывает сделку 1867 года, и Аляска превращается из далекой колонии в главный северный фронтир русской модернизации и соперничества с США.",
+    "countries": ["Россия", "США"],
+    "era": "XIX век",
+    "themes": ["геополитика", "империи"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "mongolo-tatarskoe-nashestvie-ne-doshlo-do-rusi",
+      "mitingi-na-bolotnoy-priveli-k-smene-vlasti",
+      "hristianstvo-ostalos-lokalnoy-sektoy"
+    ]
+  },
+  {
+    "slug": "hristianstvo-ostalos-lokalnoy-sektoy",
+    "shareId": "0T30sY0",
+    "status": "public",
+    "featured": true,
+    "publishedAt": "2026-04-12",
+    "popularity": 91,
+    "summary": "Несостоявшаяся миссия Павла меняет историю веры: вместо мировой религии христианство остается региональным движением, а Средиземноморье развивается по совсем иной логике.",
+    "countries": ["Ближний Восток", "Средиземноморье"],
+    "era": "I век",
+    "themes": ["религия", "цивилизации"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "mongolo-tatarskoe-nashestvie-ne-doshlo-do-rusi",
+      "rossiya-ne-prodala-alyasku",
+      "neandertaltsy-vyigrali-evolyutsionnuyu-gonku"
+    ]
+  },
+  {
+    "slug": "gravitatsiya-umenshilas-vdvoe",
+    "shareId": "z6ccmRo",
+    "status": "public",
+    "featured": true,
+    "publishedAt": "2026-04-12",
+    "popularity": 89,
+    "summary": "Одним утром Земля становится легче вдвое, и привычная техника, города и само тело человека начинают жить по новым, опасным законам.",
+    "countries": ["Мир"],
+    "era": "XXI век",
+    "themes": ["наука", "катастрофы"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "dinozavry-ne-vymerli",
+      "legendy-o-vampirakh-okazalis-mutatsiey-elit",
+      "neandertaltsy-vyigrali-evolyutsionnuyu-gonku"
+    ]
+  },
+  {
+    "slug": "mongolo-tatarskoe-nashestvie-ne-doshlo-do-rusi",
+    "shareId": "r6aGLkI",
+    "status": "public",
+    "featured": false,
+    "publishedAt": "2026-04-12",
+    "popularity": 86,
+    "summary": "Орда разворачивается на юг, и русские княжества взрослеют без тотального разорения, раньше собирая города, торговлю и государственные институты.",
+    "countries": ["Русь"],
+    "era": "XIII век",
+    "themes": ["государственность", "войны"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "rossiya-ne-prodala-alyasku",
+      "hristianstvo-ostalos-lokalnoy-sektoy",
+      "mitingi-na-bolotnoy-priveli-k-smene-vlasti"
+    ]
+  },
+  {
+    "slug": "dinozavry-ne-vymerli",
+    "shareId": "qvY87ak",
+    "status": "public",
+    "featured": false,
+    "publishedAt": "2026-04-12",
+    "popularity": 90,
+    "summary": "Астероид проходит мимо, и человеческая цивилизация появляется в мире, где крупные древние хищники и экосистемы так и не уступили ей планету.",
+    "countries": ["Мир"],
+    "era": "Доисторическая эпоха",
+    "themes": ["эволюция", "биосфера"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "neandertaltsy-vyigrali-evolyutsionnuyu-gonku",
+      "gravitatsiya-umenshilas-vdvoe",
+      "legendy-o-vampirakh-okazalis-mutatsiey-elit"
+    ]
+  },
+  {
+    "slug": "mitingi-na-bolotnoy-priveli-k-smene-vlasti",
+    "shareId": "Cic01FI",
+    "status": "public",
+    "featured": false,
+    "publishedAt": "2026-04-12",
+    "popularity": 88,
+    "summary": "Протесты зимы 2011-2012 годов не рассасываются, а вынуждают систему к уступкам и перестраивают российскую политику на годы вперед.",
+    "countries": ["Россия"],
+    "era": "XXI век",
+    "themes": ["политика", "протесты"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "rossiya-ne-prodala-alyasku",
+      "mongolo-tatarskoe-nashestvie-ne-doshlo-do-rusi",
+      "legendy-o-vampirakh-okazalis-mutatsiey-elit"
+    ]
+  },
+  {
+    "slug": "legendy-o-vampirakh-okazalis-mutatsiey-elit",
+    "shareId": "tKeucTY",
+    "status": "public",
+    "featured": false,
+    "publishedAt": "2026-04-12",
+    "popularity": 84,
+    "summary": "Миф о вампирах оказывается не суеверием, а прикрытием для наследуемой мутации, десятилетиями определяющей поведение европейских правящих семей.",
+    "countries": ["Европа"],
+    "era": "XVIII век",
+    "themes": ["конспирология", "биология"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "gravitatsiya-umenshilas-vdvoe",
+      "dinozavry-ne-vymerli",
+      "mitingi-na-bolotnoy-priveli-k-smene-vlasti"
+    ]
+  },
+  {
+    "slug": "neandertaltsy-vyigrali-evolyutsionnuyu-gonku",
+    "shareId": "QMUOjhw",
+    "status": "public",
+    "featured": false,
+    "publishedAt": "2026-04-12",
+    "popularity": 87,
+    "summary": "Кроманьонцы проигрывают, и современный мир строится не вокруг нас, а вокруг другой ветви человечества с иными институтами, ритмом и культурой выживания.",
+    "countries": ["Мир"],
+    "era": "Доисторическая эпоха",
+    "themes": ["эволюция", "антропология"],
+    "tone": "Реализм",
+    "relatedSlugs": [
+      "dinozavry-ne-vymerli",
+      "gravitatsiya-umenshilas-vdvoe",
+      "hristianstvo-ostalos-lokalnoy-sektoy"
+    ]
+  }
+]

@@ -15,6 +15,16 @@ const CURRENT_YEAR = new Date().getFullYear();
 window.__SCENARIO_PAYLOAD__ = typeof window.__SCENARIO_PAYLOAD__ === "string"
   ? window.__SCENARIO_PAYLOAD__
   : "";
+window.__PAGE_CONTEXT__ =
+  window.__PAGE_CONTEXT__ && typeof window.__PAGE_CONTEXT__ === "object"
+    ? window.__PAGE_CONTEXT__
+    : {};
+const PAGE_CONTEXT = {
+  allowClientTitle: true,
+  disableScenarioHydration: false,
+  kind: "home",
+  ...window.__PAGE_CONTEXT__,
+};
 const STORAGE_LANGUAGE_KEY = "bh_language";
 const QUICK_START_EXAMPLES = {
   ru: [
@@ -319,7 +329,9 @@ setLanguage(currentLanguage, { persist: false });
 syncRandomButtonLayout();
 
 loadProviderMeta();
-void hydrateScenarioFromUrl();
+if (!PAGE_CONTEXT.disableScenarioHydration) {
+  void hydrateScenarioFromUrl();
+}
 
 if (typeof mobileButtonLayout.addEventListener === "function") {
   mobileButtonLayout.addEventListener("change", syncRandomButtonLayout);
@@ -493,7 +505,9 @@ function setAttrById(id, attribute, value) {
 
 function applyTranslations() {
   document.documentElement.lang = currentLanguage;
-  document.title = t("pageTitle");
+  if (PAGE_CONTEXT.allowClientTitle) {
+    document.title = t("pageTitle");
+  }
 
   setTextById("topbar-brand", t("pageTitle"));
   setTextById("hero-eyebrow", t("heroEyebrow"));

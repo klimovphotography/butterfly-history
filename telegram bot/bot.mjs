@@ -44,7 +44,7 @@ const ADMIN_USER_IDS = new Set(
     .filter(Boolean)
 );
 const SUPPORT_USERNAME = normalizeTelegramUsername(process.env.SUPPORT_USERNAME);
-const SUPPORT_EMAIL = String(process.env.SUPPORT_EMAIL || '').trim();
+const SUPPORT_EMAIL = String(process.env.SUPPORT_EMAIL || 'klimovphotography@ya.ru').trim();
 const SUPPORT_URL = String(process.env.SUPPORT_URL || '').trim();
 const TERMS_URL = String(process.env.TERMS_URL || '').trim();
 
@@ -66,16 +66,10 @@ const PUBLIC_BOT_COMMANDS = [
   { command: 'start',      description: 'Начать заново' },
   { command: 'help',       description: 'Как пользоваться ботом' },
   { command: 'status',     description: 'Мой баланс запросов' },
-  { command: 'myid',       description: 'Мой Telegram ID' },
   { command: 'buy',        description: 'Купить запросы' },
   { command: 'support',    description: 'Поддержка' },
   { command: 'paysupport', description: 'Вопросы по оплате' },
   { command: 'terms',      description: 'Условия использования' },
-];
-
-const ADMIN_BOT_COMMANDS = [
-  ...PUBLIC_BOT_COMMANDS,
-  { command: 'admin_stats', description: 'Статистика бота' },
 ];
 
 // ─── In-memory state ──────────────────────────────────────────────────────────
@@ -279,8 +273,6 @@ function buildTermsText() {
 
   if (TERMS_URL) {
     text += `\n\nПолная версия: <a href="${ha(TERMS_URL)}">${h(TERMS_URL)}</a>`;
-  } else {
-    text += `\n\nЕсли захотите, позже можно вынести полные условия на отдельную страницу сайта и указать <code>TERMS_URL</code> в .env.`;
   }
 
   return text;
@@ -297,7 +289,6 @@ async function buildWelcomeText(userId) {
     `Стартовый пакет: ${remainingLabel(FREE_REQUESTS)} бесплатно, дальше — за ⭐️ Звёзды Telegram.\n\n` +
     `Команды:\n` +
     `/status — остаток запросов\n` +
-    `/myid — показать ваш Telegram ID\n` +
     `/buy — купить больше запросов\n` +
     `/support — поддержка\n` +
     `/terms — условия\n` +
@@ -319,7 +310,7 @@ async function syncTelegramCommands() {
     const chatId = Number(adminId);
     if (!Number.isFinite(chatId)) continue;
 
-    await bot.telegram.setMyCommands(ADMIN_BOT_COMMANDS, {
+    await bot.telegram.setMyCommands(PUBLIC_BOT_COMMANDS, {
       scope: { type: 'chat', chat_id: chatId },
     });
   }
@@ -349,7 +340,6 @@ bot.command('help', async (ctx) => {
     `4. Выберите ветку продолжения или задайте новый вопрос.\n\n` +
     `<b>Квота:</b> ${remainingLabel(FREE_REQUESTS)} бесплатно, затем — ⭐ Звёзды.\n` +
     `/status — ваш баланс\n` +
-    `/myid — ваш Telegram ID\n` +
     `/buy — купить запросы\n` +
     `/support — поддержка\n` +
     `/terms — условия`

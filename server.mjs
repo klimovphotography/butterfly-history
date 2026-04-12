@@ -270,8 +270,11 @@ function missingModelMessage(model) {
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 const PUBLIC_DIR = path.join(__dirname, "public");
-const SHARE_LINKS_DIR = path.join(__dirname, "data");
-const SHARE_LINKS_FILE = path.join(SHARE_LINKS_DIR, "share-links.json");
+const REPO_DATA_DIR = path.join(__dirname, "data");
+const RUNTIME_DATA_DIR = resolveRuntimeDataDir();
+const LEGACY_SHARE_LINKS_FILE = path.join(REPO_DATA_DIR, "share-links.json");
+const SHARE_LINKS_FILE = path.join(RUNTIME_DATA_DIR, "share-links.json");
+const PUBLIC_SCENARIOS_FILE = path.join(REPO_DATA_DIR, "public-scenarios.json");
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -324,6 +327,24 @@ const server = http.createServer(async (req, res) => {
       }
       if (url.pathname === "/og/scenario.png") {
         await handleScenarioOgPng(req, res, url);
+        return;
+      }
+      if (url.pathname === "/scenarios/") {
+        redirect(res, 301, "/scenarios");
+        return;
+      }
+      if (url.pathname === "/scenarios") {
+        await serveArchiveHtml(url, res, req.method, getSiteUrl(req));
+        return;
+      }
+      if (url.pathname.startsWith("/scenario/") && url.pathname !== "/scenario/") {
+        const normalizedPath = url.pathname.replace(/\/+$/, "");
+        if (normalizedPath !== url.pathname) {
+          const location = `${normalizedPath}${url.search}`;
+          redirect(res, 301, location);
+          return;
+        }
+        await servePublicScenarioHtml(url, res, req.method, getSiteUrl(req));
         return;
       }
       if (url.pathname === "/" || url.pathname === "/index.html") {
@@ -1316,24 +1337,35 @@ async function serveStaticFile(pathname, res, method = "GET") {
 
 async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butterfly-history.ru") {
   try {
-    const filePath = path.join(PUBLIC_DIR, "index.html");
-    const rawHtml = await fsp.readFile(filePath, "utf-8");
-    let scenarioParam = String(url.searchParams.get("scenario") || "").trim();
-    if (!scenarioParam) {
-      const shortId = normalizeShortId(url.searchParams.get("s"));
-      if (shortId) {
-        const store = await readShareLinks();
-        scenarioParam = String(store[shortId]?.scenario || "").trim();
-      }
-    }
-    const withBootstrap = injectScenarioBootstrap(rawHtml, scenarioParam);
-    const injected = injectScenarioMeta(withBootstrap, scenarioParam, siteUrl);
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    if (method === "HEAD") {
-      res.end();
+    const library = await loadPublicScenarioLibrary();
+    const resolved = await resolveIncomingScenario(url, library);
+
+    if (resolved.redirectTo) {
+      redirect(res, 302, resolved.redirectTo);
       return;
     }
-    res.end(injected);
+
+    const pageMeta = resolved.scenarioParam
+      ? buildPrivateScenarioPageMeta({
+        scenarioParam: resolved.scenarioParam,
+        shareId: resolved.shareId,
+        siteUrl,
+      })
+      : buildHomePageMeta(siteUrl, library);
+
+    const html = await renderShellHtml({
+      primaryHtml: renderHomeLead(),
+      secondaryHtml: renderArchivePreviewSection(library),
+      scenarioParam: resolved.scenarioParam,
+      pageContext: {
+        kind: resolved.scenarioParam ? "shared" : "home",
+        allowClientTitle: !resolved.scenarioParam,
+        disableScenarioHydration: false,
+      },
+      meta: pageMeta,
+    });
+
+    sendHtml(res, 200, html, method);
   } catch (error) {
     if (error?.code === "ENOENT") {
       sendJson(res, 404, { error: "Not found" });
@@ -1343,56 +1375,189 @@ async function serveIndexHtml(url, res, method = "GET", siteUrl = "https://butte
   }
 }
 
-function injectScenarioBootstrap(html, scenarioParam) {
-  const scenario = String(scenarioParam || "").trim();
-  if (!scenario) {
-    return html.replace(
-      "<!-- SCENARIO_BOOTSTRAP -->",
-      "<script>window.__SCENARIO_PAYLOAD__ = \"\";</script>"
-    );
-  }
+async function serveArchiveHtml(url, res, method = "GET", siteUrl = "https://butterfly-history.ru") {
+  try {
+    const library = await loadPublicScenarioLibrary();
+    const filters = readArchiveFilters(url);
+    const filteredScenarios = filterPublicScenarios(library.scenarios, filters);
+    const html = await renderShellHtml({
+      primaryHtml: renderArchivePage(library, filteredScenarios, filters),
+      secondaryHtml: "",
+      scenarioParam: "",
+      pageContext: {
+        kind: "archive",
+        allowClientTitle: false,
+        disableScenarioHydration: true,
+      },
+      meta: buildArchivePageMeta(siteUrl, library, filteredScenarios, filters),
+    });
 
+    sendHtml(res, 200, html, method);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function servePublicScenarioHtml(url, res, method = "GET", siteUrl = "https://butterfly-history.ru") {
+  try {
+    const library = await loadPublicScenarioLibrary();
+    const slug = decodeURIComponent(url.pathname.slice("/scenario/".length)).trim();
+    const scenario = library.bySlug.get(slug);
+
+    if (!scenario) {
+      await serveNotFoundHtml(res, method, siteUrl, library);
+      return;
+    }
+
+    const html = await renderShellHtml({
+      primaryHtml: renderPublicScenarioPage(scenario, library),
+      secondaryHtml: "",
+      scenarioParam: scenario.encodedScenario,
+      pageContext: {
+        kind: "public-scenario",
+        allowClientTitle: false,
+        disableScenarioHydration: true,
+        scenarioSlug: scenario.slug,
+      },
+      meta: buildPublicScenarioPageMeta(scenario, siteUrl),
+    });
+
+    sendHtml(res, 200, html, method);
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      sendJson(res, 404, { error: "Not found" });
+      return;
+    }
+    throw error;
+  }
+}
+
+async function serveNotFoundHtml(res, method = "GET", siteUrl = "https://butterfly-history.ru", library = null) {
+  const contentLibrary = library || await loadPublicScenarioLibrary();
+  const html = await renderShellHtml({
+    primaryHtml: renderNotFoundSection(),
+    secondaryHtml: renderArchivePreviewSection(contentLibrary, {
+      title: "Лучшие сценарии из архива",
+      subtitle: "Пока эта страница не найдена, можно открыть уже опубликованные развилки.",
+    }),
+    scenarioParam: "",
+    pageContext: {
+      kind: "not-found",
+      allowClientTitle: false,
+      disableScenarioHydration: true,
+    },
+    meta: buildNotFoundPageMeta(siteUrl),
+  });
+
+  sendHtml(res, 404, html, method);
+}
+
+async function renderShellHtml({
+  primaryHtml = "",
+  secondaryHtml = "",
+  scenarioParam = "",
+  pageContext = {},
+  meta,
+}) {
+  const filePath = path.join(PUBLIC_DIR, "index.html");
+  const rawHtml = await fsp.readFile(filePath, "utf-8");
+  const withContent = injectPageContent(rawHtml, { primaryHtml, secondaryHtml });
+  const withBootstrap = injectPageBootstrap(withContent, { scenarioParam, pageContext });
+  return injectPageMeta(withBootstrap, meta);
+}
+
+function injectPageContent(html, { primaryHtml = "", secondaryHtml = "" }) {
+  return html
+    .replace("<!-- PAGE_PRIMARY -->", primaryHtml)
+    .replace("<!-- PAGE_SECONDARY -->", secondaryHtml);
+}
+
+function injectPageBootstrap(html, { scenarioParam = "", pageContext = {} }) {
+  const scenario = String(scenarioParam || "").trim();
+  const scenarioScript = `<script>window.__SCENARIO_PAYLOAD__ = "${escapeJsString(scenario)}";</script>`;
+  const contextScript = `<script>window.__PAGE_CONTEXT__ = ${serializeInlineJson(pageContext)};</script>`;
   return html.replace(
     "<!-- SCENARIO_BOOTSTRAP -->",
-    `<script>window.__SCENARIO_PAYLOAD__ = "${escapeJsString(scenario)}";</script>`
+    `${scenarioScript}\n    ${contextScript}`
   );
 }
 
-function injectScenarioMeta(html, scenarioParam, siteUrl) {
-  const meta = buildScenarioMeta(scenarioParam, siteUrl);
-  if (!meta) return html;
-
-  const scenarioUrl = `${siteUrl}/?scenario=${encodeURIComponent(scenarioParam)}`;
-  const titleTag = `<title>${escapeHtmlAttr(meta.title)}</title>`;
+function injectPageMeta(html, meta) {
+  const resolved = normalizePageMeta(meta);
   const socialBlock = [
-    '<meta name="description" content="' + escapeHtmlAttr(meta.description) + '" />',
-    '<meta property="og:title" content="' + escapeHtmlAttr(meta.title) + '" />',
-    '<meta property="og:description" content="' + escapeHtmlAttr(meta.description) + '" />',
-    '<meta property="og:type" content="website" />',
-    '<meta property="og:url" content="' + escapeHtmlAttr(scenarioUrl) + '" />',
-    '<meta property="og:locale" content="' + escapeHtmlAttr(meta.locale) + '" />',
-    '<meta property="og:site_name" content="' + escapeHtmlAttr(meta.siteName) + '" />',
-    '<meta property="og:image" content="' + escapeHtmlAttr(meta.imageUrl) + '" />',
+    '<meta name="description" content="' + escapeHtmlAttr(resolved.description) + '" />',
+    '<meta property="og:title" content="' + escapeHtmlAttr(resolved.title) + '" />',
+    '<meta property="og:description" content="' + escapeHtmlAttr(resolved.description) + '" />',
+    '<meta property="og:type" content="' + escapeHtmlAttr(resolved.ogType) + '" />',
+    '<meta property="og:url" content="' + escapeHtmlAttr(resolved.ogUrl) + '" />',
+    '<meta property="og:locale" content="' + escapeHtmlAttr(resolved.locale) + '" />',
+    '<meta property="og:site_name" content="' + escapeHtmlAttr(resolved.siteName) + '" />',
+    '<meta property="og:image" content="' + escapeHtmlAttr(resolved.imageUrl) + '" />',
     '<meta property="og:image:type" content="image/png" />',
     '<meta property="og:image:width" content="1200" />',
     '<meta property="og:image:height" content="630" />',
-    '<meta property="og:image:alt" content="' + escapeHtmlAttr(meta.title) + '" />',
+    '<meta property="og:image:alt" content="' + escapeHtmlAttr(resolved.imageAlt || resolved.title) + '" />',
     '<meta name="twitter:card" content="summary_large_image" />',
-    '<meta name="twitter:title" content="' + escapeHtmlAttr(meta.title) + '" />',
-    '<meta name="twitter:description" content="' + escapeHtmlAttr(meta.description) + '" />',
-    '<meta name="twitter:image" content="' + escapeHtmlAttr(meta.imageUrl) + '" />',
+    '<meta name="twitter:title" content="' + escapeHtmlAttr(resolved.title) + '" />',
+    '<meta name="twitter:description" content="' + escapeHtmlAttr(resolved.description) + '" />',
+    '<meta name="twitter:image" content="' + escapeHtmlAttr(resolved.imageUrl) + '" />',
   ].join("\n    ");
 
+  const structuredDataBlock = `<script type="application/ld+json">\n${serializeInlineJson(resolved.structuredData)}\n    </script>`;
+
   return html
-    .replace(/<title>[\s\S]*?<\/title>/i, titleTag)
+    .replace(/<html\s+lang="[^"]*"/i, `<html lang="${escapeHtmlAttr(resolved.htmlLang)}"`)
+    .replace(/<title>[\s\S]*?<\/title>/i, `<title>${escapeHtmlAttr(resolved.title)}</title>`)
+    .replace(/\s*<meta\s+name="robots"\s+content="[^"]*"\s*\/?>/i, "")
+    .replace(
+      /<link\s+rel="canonical"\s+href="[^"]*"\s*\/?>/i,
+      `<link rel="canonical" href="${escapeHtmlAttr(resolved.canonicalUrl)}" />\n    <meta name="robots" content="${escapeHtmlAttr(resolved.robots)}" />`
+    )
     .replace(
       /<!--\s*SOCIAL_META_START\s*-->[\s\S]*?<!--\s*SOCIAL_META_END\s*-->/i,
       `<!-- SOCIAL_META_START -->\n    ${socialBlock}\n    <!-- SOCIAL_META_END -->`
     )
-    .replace(
-      /<meta\s+property="og:url"\s+content="[^"]*"\s*\/?>/i,
-      `<meta property="og:url" content="${escapeHtmlAttr(scenarioUrl)}" />`
-    );
+    .replace(/<script\s+type="application\/ld\+json">[\s\S]*?<\/script>/i, structuredDataBlock);
+}
+
+function normalizePageMeta(meta) {
+  const fallbackTitle = "Эффект Бабочки";
+  const fallbackDescription =
+    "Генератор и архив альтернативной истории с публичными сценариями и внутренней навигацией.";
+  const siteName = "Эффект Бабочки";
+  const siteUrl = "https://butterfly-history.ru";
+  const title = oneLine(meta?.title || fallbackTitle);
+  const description = oneLine(meta?.description || fallbackDescription);
+  const canonicalUrl = String(meta?.canonicalUrl || siteUrl).trim() || siteUrl;
+  const ogUrl = String(meta?.ogUrl || canonicalUrl).trim() || canonicalUrl;
+  const imageUrl = String(meta?.imageUrl || `${siteUrl}/logo.png`).trim() || `${siteUrl}/logo.png`;
+  const locale = String(meta?.locale || "ru_RU").trim() || "ru_RU";
+  const htmlLang = String(meta?.htmlLang || (locale === "en_US" ? "en" : "ru")).trim() || "ru";
+  const robots = String(meta?.robots || "index,follow").trim() || "index,follow";
+  const ogType = String(meta?.ogType || "website").trim() || "website";
+  const structuredData = meta?.structuredData || buildWebsiteStructuredData(siteUrl, {
+    title,
+    description,
+  });
+
+  return {
+    title,
+    description,
+    canonicalUrl,
+    ogUrl,
+    imageUrl,
+    locale,
+    htmlLang,
+    robots,
+    ogType,
+    siteName,
+    imageAlt: meta?.imageAlt || title,
+    structuredData,
+  };
 }
 
 function buildScenarioMeta(scenarioParam, siteUrl) {
@@ -1416,9 +1581,886 @@ function buildScenarioMeta(scenarioParam, siteUrl) {
     imageUrl,
     subtitle,
     narrative,
+    lang,
     locale: lang === "en" ? "en_US" : "ru_RU",
     siteName: byLanguage(lang, "Эффект Бабочки", "Butterfly Effect"),
   };
+}
+
+async function readPublicScenarioManifest() {
+  try {
+    const raw = await fsp.readFile(PUBLIC_SCENARIOS_FILE, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
+async function loadPublicScenarioLibrary() {
+  const [manifest, shareStore] = await Promise.all([
+    readPublicScenarioManifest(),
+    readShareLinks(),
+  ]);
+
+  const scenarios = manifest
+    .map((entry) => normalizePublicScenarioRecord(entry, shareStore[entry?.shareId]))
+    .filter(Boolean)
+    .filter((entry) => entry.status === "public")
+    .sort(compareByPublishedDesc);
+
+  const bySlug = new Map();
+  const byShareId = new Map();
+  const byEncodedScenario = new Map();
+
+  for (const scenario of scenarios) {
+    bySlug.set(scenario.slug, scenario);
+    byShareId.set(scenario.shareId, scenario);
+    byEncodedScenario.set(scenario.encodedScenario, scenario);
+  }
+
+  return {
+    scenarios,
+    bySlug,
+    byShareId,
+    byEncodedScenario,
+    featured: scenarios.filter((entry) => entry.featured).sort(compareByPopularityDesc),
+    recent: [...scenarios].sort(compareByPublishedDesc),
+    popular: [...scenarios].sort(compareByPopularityDesc),
+    facets: buildScenarioFacets(scenarios),
+    totalCount: scenarios.length,
+  };
+}
+
+function normalizePublicScenarioRecord(entry, storeEntry) {
+  if (!entry || typeof entry !== "object" || !storeEntry?.scenario) {
+    return null;
+  }
+
+  const encodedScenario = String(storeEntry.scenario || "").trim();
+  const parsed = decodeScenarioPayload(encodedScenario);
+  if (!parsed) {
+    return null;
+  }
+
+  const lang = normalizeLanguage(entry.lang || parsed.lang || parsed.language);
+  const title = oneLine(entry.title || parsed.event || parsed.title || "");
+  const subtitle = oneLine(entry.subtitle || parsed.subtitle || "");
+  const narrative = oneLine(parsed.narrative || "");
+  const summary = truncate(
+    entry.summary || subtitle || firstSentence(narrative),
+    220
+  );
+  const description = truncate(
+    entry.description || summary || firstSentence(narrative),
+    180
+  );
+  const publishedAt = normalizeIsoDate(entry.publishedAt || storeEntry.createdAt);
+  const createdAt = normalizeIsoDate(storeEntry.createdAt);
+  const countries = normalizeTagList(entry.countries);
+  const themes = normalizeTagList(entry.themes);
+  const tone = oneLine(entry.tone || getModeLabelForLang(parsed.mode, lang));
+  const era = oneLine(entry.era || "");
+  const wordCount = countWords(narrative);
+
+  return {
+    slug: String(entry.slug || "").trim(),
+    shareId: String(entry.shareId || "").trim(),
+    status: String(entry.status || "draft").trim(),
+    featured: Boolean(entry.featured),
+    popularity: Number(entry.popularity || 0),
+    publishedAt,
+    createdAt,
+    updatedAt: publishedAt || createdAt,
+    lang,
+    title,
+    subtitle,
+    summary,
+    description,
+    narrative,
+    paragraphs: splitNarrativeIntoParagraphs(narrative),
+    countries,
+    era,
+    themes,
+    tone,
+    mode: String(parsed.mode || "realism").trim() || "realism",
+    relatedSlugs: normalizeTagList(entry.relatedSlugs),
+    encodedScenario,
+    imageUrl: "",
+    url: `/scenario/${encodeURIComponent(String(entry.slug || "").trim())}`,
+    wordCount,
+    readingMinutes: Math.max(1, Math.round(wordCount / 170) || 1),
+  };
+}
+
+async function resolveIncomingScenario(url, library) {
+  const directScenario = String(url.searchParams.get("scenario") || "").trim();
+  const shareId = normalizeShortId(url.searchParams.get("s"));
+
+  if (shareId) {
+    const publicScenario = library.byShareId.get(shareId);
+    if (publicScenario) {
+      return { redirectTo: publicScenario.url, scenarioParam: "", shareId };
+    }
+
+    const shareStore = await readShareLinks();
+    const scenarioParam = String(shareStore[shareId]?.scenario || "").trim();
+    const parsed = decodeScenarioPayload(scenarioParam);
+    return {
+      redirectTo: "",
+      shareId,
+      scenarioParam: parsed ? scenarioParam : "",
+    };
+  }
+
+  if (directScenario) {
+    const publicScenario = library.byEncodedScenario.get(directScenario);
+    if (publicScenario) {
+      return { redirectTo: publicScenario.url, scenarioParam: "", shareId: "" };
+    }
+  }
+
+  return {
+    redirectTo: "",
+    shareId: "",
+    scenarioParam: decodeScenarioPayload(directScenario) ? directScenario : "",
+  };
+}
+
+function readArchiveFilters(url) {
+  return {
+    country: oneLine(url.searchParams.get("country") || ""),
+    era: oneLine(url.searchParams.get("era") || ""),
+    theme: oneLine(url.searchParams.get("theme") || ""),
+    tone: oneLine(url.searchParams.get("tone") || ""),
+    lang: normalizeOptionalLanguage(url.searchParams.get("lang") || ""),
+    hasFilters:
+      Boolean(oneLine(url.searchParams.get("country") || "")) ||
+      Boolean(oneLine(url.searchParams.get("era") || "")) ||
+      Boolean(oneLine(url.searchParams.get("theme") || "")) ||
+      Boolean(oneLine(url.searchParams.get("tone") || "")) ||
+      Boolean(oneLine(url.searchParams.get("lang") || "")),
+  };
+}
+
+function filterPublicScenarios(scenarios, filters) {
+  return scenarios.filter((scenario) => {
+    if (filters.country && !scenario.countries.includes(filters.country)) {
+      return false;
+    }
+    if (filters.era && scenario.era !== filters.era) {
+      return false;
+    }
+    if (filters.theme && !scenario.themes.includes(filters.theme)) {
+      return false;
+    }
+    if (filters.tone && scenario.tone !== filters.tone) {
+      return false;
+    }
+    if (filters.lang && scenario.lang !== filters.lang) {
+      return false;
+    }
+    return true;
+  });
+}
+
+function buildScenarioFacets(scenarios) {
+  return {
+    countries: buildFacetList(scenarios.flatMap((entry) => entry.countries)),
+    eras: buildFacetList(scenarios.map((entry) => entry.era).filter(Boolean)),
+    themes: buildFacetList(scenarios.flatMap((entry) => entry.themes)),
+    tones: buildFacetList(scenarios.map((entry) => entry.tone).filter(Boolean)),
+    languages: buildFacetList(
+      scenarios.map((entry) => (entry.lang === "en" ? "English" : "Русский"))
+    ),
+  };
+}
+
+function buildFacetList(values) {
+  const counter = new Map();
+  for (const value of values) {
+    const key = oneLine(value);
+    if (!key) continue;
+    counter.set(key, (counter.get(key) || 0) + 1);
+  }
+
+  return [...counter.entries()]
+    .map(([label, count]) => ({ label, count }))
+    .sort((left, right) => {
+      if (right.count !== left.count) {
+        return right.count - left.count;
+      }
+      return left.label.localeCompare(right.label, "ru");
+    });
+}
+
+function buildHomePageMeta(siteUrl, library) {
+  const title = "Эффект Бабочки — генератор и архив альтернативной истории";
+  const description = `Генератор альтернативной истории и публичный архив с ${library.totalCount} отобранными сценариями, внутренними ссылками и поисковыми страницами.`;
+
+  return {
+    title,
+    description,
+    canonicalUrl: `${siteUrl}/`,
+    ogUrl: `${siteUrl}/`,
+    imageUrl: `${siteUrl}/logo.png`,
+    locale: "ru_RU",
+    htmlLang: "ru",
+    robots: "index,follow",
+    ogType: "website",
+    structuredData: buildWebsiteStructuredData(siteUrl, { title, description }),
+  };
+}
+
+function buildPrivateScenarioPageMeta({ scenarioParam, shareId, siteUrl }) {
+  const scenarioMeta = buildScenarioMeta(scenarioParam, siteUrl);
+  if (!scenarioMeta) {
+    return buildHomePageMeta(siteUrl, { totalCount: 0 });
+  }
+
+  const shareUrl = shareId
+    ? `${siteUrl}/?s=${encodeURIComponent(shareId)}`
+    : `${siteUrl}/?scenario=${encodeURIComponent(scenarioParam)}`;
+
+  return {
+    title: `${scenarioMeta.title} | Эффект Бабочки`,
+    description: scenarioMeta.description,
+    canonicalUrl: shareId ? shareUrl : `${siteUrl}/`,
+    ogUrl: shareUrl,
+    imageUrl: scenarioMeta.imageUrl,
+    locale: scenarioMeta.locale,
+    htmlLang: scenarioMeta.lang,
+    robots: "noindex,follow",
+    ogType: "article",
+    structuredData: buildTemporaryScenarioStructuredData(shareUrl, scenarioMeta),
+  };
+}
+
+function buildArchivePageMeta(siteUrl, library, filteredScenarios, filters) {
+  const suffix = filters.hasFilters
+    ? `: ${formatActiveFilterSummary(filters)}`
+    : "";
+  const title = `Архив сценариев альтернативной истории${suffix} | Эффект Бабочки`;
+  const description = filters.hasFilters
+    ? `Подборка из ${filteredScenarios.length} опубликованных сценариев по фильтру "${formatActiveFilterSummary(filters)}".`
+    : `Публичный архив из ${library.totalCount} отобранных сценариев: политика, цивилизации, катастрофы, эволюция и неожиданные развилки мировой истории.`;
+
+  return {
+    title,
+    description,
+    canonicalUrl: `${siteUrl}/scenarios`,
+    ogUrl: filters.hasFilters
+      ? `${siteUrl}/scenarios?${buildArchiveQueryString(filters)}`
+      : `${siteUrl}/scenarios`,
+    imageUrl: `${siteUrl}/logo.png`,
+    locale: "ru_RU",
+    htmlLang: "ru",
+    robots: filters.hasFilters ? "noindex,follow" : "index,follow",
+    ogType: "website",
+    structuredData: buildArchiveStructuredData(siteUrl, library.totalCount, title, description),
+  };
+}
+
+function buildPublicScenarioPageMeta(scenario, siteUrl) {
+  const canonicalUrl = `${siteUrl}${scenario.url}`;
+  const imageUrl = `${siteUrl}/og/scenario.png?scenario=${encodeURIComponent(scenario.encodedScenario)}`;
+
+  return {
+    title: `${scenario.title} | Эффект Бабочки`,
+    description: scenario.description,
+    canonicalUrl,
+    ogUrl: canonicalUrl,
+    imageUrl,
+    locale: scenario.lang === "en" ? "en_US" : "ru_RU",
+    htmlLang: scenario.lang,
+    robots: "index,follow",
+    ogType: "article",
+    structuredData: buildPublicScenarioStructuredData(siteUrl, scenario, imageUrl),
+  };
+}
+
+function buildNotFoundPageMeta(siteUrl) {
+  return {
+    title: "Страница не найдена | Эффект Бабочки",
+    description: "Запрошенная страница не найдена. Откройте архив сценариев альтернативной истории или запустите новый генератор.",
+    canonicalUrl: `${siteUrl}/`,
+    ogUrl: `${siteUrl}/`,
+    imageUrl: `${siteUrl}/logo.png`,
+    locale: "ru_RU",
+    htmlLang: "ru",
+    robots: "noindex,follow",
+    ogType: "website",
+    structuredData: buildWebsiteStructuredData(siteUrl, {
+      title: "Эффект Бабочки",
+      description: "Генератор и архив альтернативной истории.",
+    }),
+  };
+}
+
+function buildWebsiteStructuredData(siteUrl, { title, description }) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "WebSite",
+    name: "Эффект Бабочки",
+    url: siteUrl,
+    inLanguage: "ru-RU",
+    description,
+    publisher: {
+      "@type": "Organization",
+      name: "Эффект Бабочки",
+      logo: {
+        "@type": "ImageObject",
+        url: `${siteUrl}/logo.png`,
+      },
+    },
+    potentialAction: {
+      "@type": "SearchAction",
+      target: `${siteUrl}/scenarios?theme={search_term_string}`,
+      "query-input": "required name=search_term_string",
+    },
+    headline: title,
+  };
+}
+
+function buildArchiveStructuredData(siteUrl, totalCount, title, description) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "CollectionPage",
+    name: title,
+    url: `${siteUrl}/scenarios`,
+    description,
+    inLanguage: "ru-RU",
+    isPartOf: {
+      "@type": "WebSite",
+      name: "Эффект Бабочки",
+      url: siteUrl,
+    },
+    about: {
+      "@type": "Thing",
+      name: "Альтернативная история",
+    },
+    mainEntity: {
+      "@type": "ItemList",
+      numberOfItems: totalCount,
+      itemListOrder: "https://schema.org/ItemListOrderDescending",
+    },
+  };
+}
+
+function buildTemporaryScenarioStructuredData(url, scenarioMeta) {
+  return {
+    "@context": "https://schema.org",
+    "@type": "CreativeWork",
+    name: scenarioMeta.title,
+    description: scenarioMeta.description,
+    url,
+    inLanguage: scenarioMeta.lang === "en" ? "en-US" : "ru-RU",
+    isAccessibleForFree: true,
+  };
+}
+
+function buildPublicScenarioStructuredData(siteUrl, scenario, imageUrl) {
+  return [
+    {
+      "@context": "https://schema.org",
+      "@type": "BreadcrumbList",
+      itemListElement: [
+        {
+          "@type": "ListItem",
+          position: 1,
+          name: "Главная",
+          item: `${siteUrl}/`,
+        },
+        {
+          "@type": "ListItem",
+          position: 2,
+          name: "Архив сценариев",
+          item: `${siteUrl}/scenarios`,
+        },
+        {
+          "@type": "ListItem",
+          position: 3,
+          name: scenario.title,
+          item: `${siteUrl}${scenario.url}`,
+        },
+      ],
+    },
+    {
+      "@context": "https://schema.org",
+      "@type": "Article",
+      headline: scenario.title,
+      alternativeHeadline: scenario.subtitle,
+      description: scenario.description,
+      url: `${siteUrl}${scenario.url}`,
+      inLanguage: scenario.lang === "en" ? "en-US" : "ru-RU",
+      datePublished: scenario.publishedAt,
+      dateModified: scenario.updatedAt,
+      image: [imageUrl],
+      author: {
+        "@type": "Organization",
+        name: "Эффект Бабочки",
+      },
+      publisher: {
+        "@type": "Organization",
+        name: "Эффект Бабочки",
+        logo: {
+          "@type": "ImageObject",
+          url: `${siteUrl}/logo.png`,
+        },
+      },
+      mainEntityOfPage: `${siteUrl}${scenario.url}`,
+      isAccessibleForFree: true,
+      articleSection: scenario.themes.join(", "),
+      keywords: [...scenario.countries, scenario.era, ...scenario.themes, scenario.tone]
+        .filter(Boolean)
+        .join(", "),
+    },
+  ];
+}
+
+function renderHomeLead() {
+  return `
+      <section class="hero-shell" aria-labelledby="hero-title-text">
+        <div class="hero">
+          <p id="hero-eyebrow" class="eyebrow">Альтернативная история</p>
+          <div class="hero-title">
+            <h1 id="hero-title-text">Эффект Бабочки</h1>
+          </div>
+          <p id="hero-subtitle" class="subtitle">
+            Напишите реальное историческое событие, а ИИ построит гипотезу: что было бы, если всё пошло иначе.
+          </p>
+          <div class="hero-actions">
+            <a id="hero-primary-link" class="hero-link hero-link-primary" href="#workspace">Создать сценарий</a>
+            <a id="hero-secondary-link" class="hero-link" href="#support-section">Поддержать проект</a>
+          </div>
+          <div class="hero-stats" aria-label="Преимущества проекта">
+            <div class="hero-stat">
+              <span class="hero-stat-value">5</span>
+              <span id="stat-label-1" class="hero-stat-label">режимов генерации</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-value">RU / EN</span>
+              <span id="stat-label-2" class="hero-stat-label">переключение языка</span>
+            </div>
+            <div class="hero-stat">
+              <span class="hero-stat-value">PNG</span>
+              <span id="stat-label-3" class="hero-stat-label">экспорт карточек</span>
+            </div>
+          </div>
+          <ul class="hero-features">
+            <li id="hero-feature-1">Тот же генератор, но с более сильной подачей</li>
+            <li id="hero-feature-2">5 режимов альтернативной истории</li>
+            <li id="hero-feature-3">Готовые карточки для шаринга</li>
+          </ul>
+        </div>
+      </section>`;
+}
+
+function renderArchivePreviewSection(library, options = {}) {
+  const scenarios = (library.featured.length > 0 ? library.featured : library.recent).slice(0, 4);
+  if (scenarios.length === 0) {
+    return "";
+  }
+
+  const title = options.title || "Публичный архив сценариев";
+  const subtitle =
+    options.subtitle ||
+    "Сильные сценарии теперь живут не только в чате, но и как отдельные страницы, по которым можно ходить дальше.";
+
+  return `
+      <section class="content-section" aria-labelledby="archive-preview-title">
+        <div class="section-head">
+          <div>
+            <p class="section-eyebrow">Архив</p>
+            <h2 id="archive-preview-title" class="section-heading">${escapeHtmlAttr(title)}</h2>
+            <p class="section-copy">${escapeHtmlAttr(subtitle)}</p>
+          </div>
+          <a class="hero-link" href="/scenarios">Открыть весь архив</a>
+        </div>
+        <div class="scenario-grid">
+          ${scenarios.map((scenario) => renderScenarioCard(scenario)).join("\n")}
+        </div>
+      </section>`;
+}
+
+function renderArchivePage(library, filteredScenarios, filters) {
+  return `
+      <section class="page-lead archive-lead">
+        <p class="eyebrow">Публичный архив</p>
+        <h1>Сценарии альтернативной истории</h1>
+        <p class="subtitle">
+          Отобранные публикации с самостоятельными URL, метаданными и внутренними переходами. Это уже не просто генератор, а библиотека развилок.
+        </p>
+        <div class="hero-stats archive-stats">
+          <div class="hero-stat">
+            <span class="hero-stat-value">${library.totalCount}</span>
+            <span class="hero-stat-label">опубликованных сценариев</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">${library.facets.themes.length}</span>
+            <span class="hero-stat-label">основных тем</span>
+          </div>
+          <div class="hero-stat">
+            <span class="hero-stat-value">${library.facets.eras.length}</span>
+            <span class="hero-stat-label">эпох и периодов</span>
+          </div>
+        </div>
+      </section>
+      <section class="content-section filters-shell" aria-labelledby="archive-filters-title">
+        <div class="section-head compact">
+          <div>
+            <p class="section-eyebrow">Навигация</p>
+            <h2 id="archive-filters-title" class="section-heading">Фильтры и таксономия</h2>
+            <p class="section-copy">
+              ${filters.hasFilters
+                ? `Сейчас показаны сценарии по фильтру: ${escapeHtmlAttr(formatActiveFilterSummary(filters))}.`
+                : "Фильтруйте по стране, эпохе, теме и тону, чтобы архив был удобен и людям, и поисковикам."}
+            </p>
+          </div>
+          ${filters.hasFilters ? '<a class="hero-link" href="/scenarios">Сбросить фильтры</a>' : ""}
+        </div>
+        <div class="filter-groups">
+          ${renderFilterGroup("Страна", "country", library.facets.countries, filters)}
+          ${renderFilterGroup("Эпоха", "era", library.facets.eras, filters)}
+          ${renderFilterGroup("Тема", "theme", library.facets.themes, filters)}
+          ${renderFilterGroup("Тон", "tone", library.facets.tones, filters)}
+        </div>
+      </section>
+      <section class="content-section" aria-labelledby="archive-grid-title">
+        <div class="section-head compact">
+          <div>
+            <p class="section-eyebrow">Результаты</p>
+            <h2 id="archive-grid-title" class="section-heading">Доступные сценарии</h2>
+            <p class="section-copy">Найдено сценариев: ${filteredScenarios.length}.</p>
+          </div>
+        </div>
+        ${filteredScenarios.length
+          ? `<div class="scenario-grid">${filteredScenarios.map((scenario) => renderScenarioCard(scenario)).join("\n")}</div>`
+          : '<div class="empty-state"><h3>Под этот фильтр пока нет сценариев.</h3><p>Попробуйте снять часть ограничений или открыть весь архив.</p></div>'}
+      </section>`;
+}
+
+function renderPublicScenarioPage(scenario, library) {
+  const related = getRelatedScenarios(scenario, library.scenarios, 4);
+  const recent = library.recent.filter((entry) => entry.slug !== scenario.slug).slice(0, 4);
+  const popular = library.popular.filter((entry) => entry.slug !== scenario.slug).slice(0, 4);
+
+  return `
+      <section class="page-lead scenario-lead">
+        <nav class="breadcrumbs" aria-label="Хлебные крошки">
+          <a href="/">Главная</a>
+          <span>/</span>
+          <a href="/scenarios">Архив сценариев</a>
+          <span>/</span>
+          <span>${escapeHtmlAttr(scenario.title)}</span>
+        </nav>
+        <p class="eyebrow">Публичный сценарий</p>
+        <h1>${escapeHtmlAttr(scenario.title)}</h1>
+        <p class="subtitle">${escapeHtmlAttr(scenario.subtitle || scenario.summary)}</p>
+        <div class="taxonomy-pills">
+          ${renderScenarioPills(scenario)}
+          <span class="taxonomy-pill">${scenario.readingMinutes} мин чтения</span>
+        </div>
+        <div class="hero-actions">
+          <a class="hero-link hero-link-primary" href="#workspace">Смоделировать свою развилку</a>
+          <a class="hero-link" href="/scenarios">Вернуться в архив</a>
+        </div>
+      </section>
+      <article class="story-card" aria-labelledby="story-title">
+        <div class="story-summary">
+          <p class="section-eyebrow">Краткий заход</p>
+          <h2 id="story-title" class="section-heading">Что меняется в этой версии истории</h2>
+          <p class="story-summary-copy">${escapeHtmlAttr(scenario.summary)}</p>
+        </div>
+        <div class="story-body">
+          ${scenario.paragraphs.map((paragraph) => `<p>${escapeHtmlAttr(paragraph)}</p>`).join("\n")}
+        </div>
+      </article>
+      <section class="content-section" aria-labelledby="discovery-title">
+        <div class="section-head compact">
+          <div>
+            <p class="section-eyebrow">Что читать дальше</p>
+            <h2 id="discovery-title" class="section-heading">Внутренние переходы</h2>
+            <p class="section-copy">Сценарий должен вести дальше по сайту. Поэтому рядом всегда есть похожие, свежие и популярные развилки.</p>
+          </div>
+        </div>
+        <div class="discovery-columns">
+          ${renderScenarioListBlock("Похожие сценарии", "Ближайшие страницы по эпохе, теме и стране.", related)}
+          ${renderScenarioListBlock("Свежие публикации", "Новые материалы, которые уже добавлены в архив.", recent)}
+          ${renderScenarioListBlock("Популярные развилки", "Сценарии, которые логично ставить в верхнюю навигацию архива.", popular)}
+        </div>
+      </section>`;
+}
+
+function renderNotFoundSection() {
+  return `
+      <section class="page-lead not-found-lead">
+        <p class="eyebrow">404</p>
+        <h1>Эта ветка истории не найдена</h1>
+        <p class="subtitle">
+          Возможно, ссылка устарела или сценарий еще не был опубликован. Ниже можно открыть архив или запустить новую генерацию.
+        </p>
+        <div class="hero-actions">
+          <a class="hero-link hero-link-primary" href="/scenarios">Открыть архив</a>
+          <a class="hero-link" href="#workspace">Создать новый сценарий</a>
+        </div>
+      </section>`;
+}
+
+function renderScenarioCard(scenario) {
+  return `
+            <article class="scenario-card">
+              <div class="scenario-card-meta">
+                <span>${escapeHtmlAttr(scenario.era)}</span>
+                <span>${escapeHtmlAttr(scenario.tone)}</span>
+              </div>
+              <h3><a href="${escapeHtmlAttr(scenario.url)}">${escapeHtmlAttr(scenario.title)}</a></h3>
+              <p class="scenario-card-copy">${escapeHtmlAttr(scenario.description)}</p>
+              <div class="taxonomy-pills compact">
+                ${renderScenarioPills(scenario)}
+              </div>
+              <a class="scenario-card-link" href="${escapeHtmlAttr(scenario.url)}">Читать сценарий</a>
+            </article>`;
+}
+
+function renderScenarioListBlock(title, description, scenarios) {
+  if (!scenarios.length) {
+    return "";
+  }
+
+  return `
+            <section class="list-block">
+              <h3>${escapeHtmlAttr(title)}</h3>
+              <p>${escapeHtmlAttr(description)}</p>
+              <ul>
+                ${scenarios
+                  .map(
+                    (scenario) =>
+                      `<li><a href="${escapeHtmlAttr(scenario.url)}">${escapeHtmlAttr(scenario.title)}</a><span>${escapeHtmlAttr(scenario.era)}</span></li>`
+                  )
+                  .join("\n")}
+              </ul>
+            </section>`;
+}
+
+function renderScenarioPills(scenario) {
+  const pills = [
+    scenario.countries[0],
+    scenario.era,
+    scenario.themes[0],
+    scenario.tone,
+  ].filter(Boolean);
+
+  return pills
+    .map((label) => `<span class="taxonomy-pill">${escapeHtmlAttr(label)}</span>`)
+    .join("\n");
+}
+
+function renderFilterGroup(title, key, items, filters) {
+  if (!items.length) {
+    return "";
+  }
+
+  return `
+            <section class="filter-group" aria-label="${escapeHtmlAttr(title)}">
+              <h3>${escapeHtmlAttr(title)}</h3>
+              <div class="filter-pills">
+                ${items
+                  .map((item) => {
+                    const currentValue = key === "lang"
+                      ? filters[key]
+                      : filters[key];
+                    const isActive = currentValue === item.label;
+                    const nextFilters = {
+                      ...filters,
+                      [key]: isActive ? "" : item.label,
+                    };
+                    const href = buildArchiveHref(nextFilters);
+                    return `<a class="filter-pill${isActive ? " is-active" : ""}" href="${escapeHtmlAttr(href)}">${escapeHtmlAttr(item.label)} <span>${item.count}</span></a>`;
+                  })
+                  .join("\n")}
+              </div>
+            </section>`;
+}
+
+function buildArchiveHref(filters) {
+  const query = buildArchiveQueryString(filters);
+  return query ? `/scenarios?${query}` : "/scenarios";
+}
+
+function buildArchiveQueryString(filters) {
+  const params = new URLSearchParams();
+  if (filters.country) params.set("country", filters.country);
+  if (filters.era) params.set("era", filters.era);
+  if (filters.theme) params.set("theme", filters.theme);
+  if (filters.tone) params.set("tone", filters.tone);
+  if (filters.lang) params.set("lang", filters.lang);
+  return params.toString();
+}
+
+function formatActiveFilterSummary(filters) {
+  return [
+    filters.country,
+    filters.era,
+    filters.theme,
+    filters.tone,
+    filters.lang === "en" ? "English" : filters.lang === "ru" ? "Русский" : "",
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function getRelatedScenarios(currentScenario, scenarios, limit = 4) {
+  const explicit = currentScenario.relatedSlugs
+    .map((slug) => scenarios.find((entry) => entry.slug === slug))
+    .filter(Boolean);
+
+  const scored = scenarios
+    .filter((entry) => entry.slug !== currentScenario.slug)
+    .map((entry) => ({
+      entry,
+      score:
+        overlapScore(entry.countries, currentScenario.countries) * 4 +
+        overlapScore(entry.themes, currentScenario.themes) * 5 +
+        Number(entry.era === currentScenario.era) * 3 +
+        Number(entry.tone === currentScenario.tone) * 2 +
+        Number(entry.lang === currentScenario.lang),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => {
+      if (right.score !== left.score) {
+        return right.score - left.score;
+      }
+      return compareByPopularityDesc(left.entry, right.entry);
+    })
+    .map((entry) => entry.entry);
+
+  return uniqueScenarioList([...explicit, ...scored]).slice(0, limit);
+}
+
+function uniqueScenarioList(scenarios) {
+  const seen = new Set();
+  const result = [];
+  for (const scenario of scenarios) {
+    if (!scenario || seen.has(scenario.slug)) continue;
+    seen.add(scenario.slug);
+    result.push(scenario);
+  }
+  return result;
+}
+
+function overlapScore(left, right) {
+  const rightSet = new Set(right);
+  let score = 0;
+  for (const item of left) {
+    if (rightSet.has(item)) {
+      score += 1;
+    }
+  }
+  return score;
+}
+
+function getModeLabelForLang(modeId, lang) {
+  const mode = String(modeId || "realism").trim();
+  const labels = {
+    realism: lang === "en" ? "Realism" : "Реализм",
+    dark: lang === "en" ? "Dark Chronicle" : "Мрачная хроника",
+    prosperity: lang === "en" ? "Age of Prosperity" : "Эпоха процветания",
+    madness: lang === "en" ? "Madness" : "Безумие",
+    humor: lang === "en" ? "Humor" : "Юмор",
+  };
+  return labels[mode] || labels.realism;
+}
+
+function normalizeTagList(values) {
+  if (Array.isArray(values)) {
+    return values.map((value) => oneLine(value)).filter(Boolean);
+  }
+  const single = oneLine(values);
+  return single ? [single] : [];
+}
+
+function splitNarrativeIntoParagraphs(narrative) {
+  const clean = oneLine(narrative);
+  if (!clean) return [];
+
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) || [clean];
+  const paragraphs = [];
+  let current = "";
+
+  for (const sentence of sentences) {
+    const chunk = current ? `${current} ${sentence.trim()}` : sentence.trim();
+    if (chunk.length > 420 && current) {
+      paragraphs.push(current);
+      current = sentence.trim();
+      continue;
+    }
+    current = chunk;
+  }
+
+  if (current) {
+    paragraphs.push(current);
+  }
+
+  return paragraphs.length > 0 ? paragraphs : [clean];
+}
+
+function countWords(text) {
+  return oneLine(text).split(" ").filter(Boolean).length;
+}
+
+function normalizeIsoDate(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString().slice(0, 10);
+}
+
+function compareByPublishedDesc(left, right) {
+  const leftDate = String(left?.publishedAt || left?.createdAt || "");
+  const rightDate = String(right?.publishedAt || right?.createdAt || "");
+  return rightDate.localeCompare(leftDate, "en");
+}
+
+function compareByPopularityDesc(left, right) {
+  const score = Number(right?.popularity || 0) - Number(left?.popularity || 0);
+  if (score !== 0) {
+    return score;
+  }
+  return compareByPublishedDesc(left, right);
+}
+
+function normalizeOptionalLanguage(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "en") return "en";
+  if (raw === "ru") return "ru";
+  return "";
+}
+
+function serializeInlineJson(value) {
+  return JSON.stringify(value, null, 2)
+    .replace(/</g, "\\u003c")
+    .replace(/>/g, "\\u003e")
+    .replace(/&/g, "\\u0026")
+    .replace(/\u2028/g, "\\u2028")
+    .replace(/\u2029/g, "\\u2029");
+}
+
+function resolveRuntimeDataDir() {
+  const configured = String(process.env.DATA_DIR || "").trim();
+  if (!configured) {
+    return path.join(__dirname, ".runtime");
+  }
+  if (path.isAbsolute(configured)) {
+    return configured;
+  }
+  return path.resolve(process.cwd(), configured);
 }
 
 async function handleScenarioOgImage(req, res, url) {
@@ -1544,21 +2586,14 @@ function renderSvgLines(lines, x, startY, fontSize, lineHeight, color, weight) {
 }
 
 async function readShareLinks() {
-  try {
-    const raw = await fsp.readFile(SHARE_LINKS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    if (!parsed || typeof parsed !== "object") return {};
-    return parsed;
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return {};
-    }
-    throw error;
-  }
+  await ensureShareLinksStorageReady();
+  const parsed = await readJsonObjectFile(SHARE_LINKS_FILE);
+  return parsed || {};
 }
 
 async function writeShareLinks(store) {
-  await fsp.mkdir(SHARE_LINKS_DIR, { recursive: true });
+  await ensureShareLinksStorageReady();
+  await fsp.mkdir(RUNTIME_DATA_DIR, { recursive: true });
   const tempPath = `${SHARE_LINKS_FILE}.tmp`;
   await fsp.writeFile(tempPath, JSON.stringify(store), "utf-8");
   await fsp.rename(tempPath, SHARE_LINKS_FILE);
@@ -1579,6 +2614,54 @@ function generateShortShareId(store) {
     id = crypto.randomBytes(5).toString("base64url");
   } while (store[id]);
   return id;
+}
+
+async function ensureShareLinksStorageReady() {
+  if (SHARE_LINKS_FILE === LEGACY_SHARE_LINKS_FILE) {
+    return;
+  }
+
+  if (await fileExists(SHARE_LINKS_FILE)) {
+    return;
+  }
+
+  const legacyStore = await readJsonObjectFile(LEGACY_SHARE_LINKS_FILE);
+  if (!legacyStore) {
+    return;
+  }
+
+  await fsp.mkdir(RUNTIME_DATA_DIR, { recursive: true });
+  const tempPath = `${SHARE_LINKS_FILE}.tmp`;
+  await fsp.writeFile(tempPath, JSON.stringify(legacyStore), "utf-8");
+  await fsp.rename(tempPath, SHARE_LINKS_FILE);
+  console.log(
+    `Migrated share links from ${LEGACY_SHARE_LINKS_FILE} to ${SHARE_LINKS_FILE}`
+  );
+}
+
+async function readJsonObjectFile(filePath) {
+  try {
+    const raw = await fsp.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) {
+      return null;
+    }
+    return parsed;
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return null;
+    }
+    throw error;
+  }
+}
+
+async function fileExists(filePath) {
+  try {
+    await fsp.access(filePath, fs.constants.F_OK);
+    return true;
+  } catch {
+    return false;
+  }
 }
 
 function normalizeShortId(value) {
@@ -1755,7 +2838,15 @@ function getSiteUrl(req) {
 async function collectSitemapUrls(siteUrl) {
   const entries = await fsp.readdir(PUBLIC_DIR, { withFileTypes: true });
   const htmlFiles = entries
-    .filter((entry) => entry.isFile() && entry.name.endsWith(".html"))
+    .filter((entry) => {
+      if (!entry.isFile() || !entry.name.endsWith(".html")) {
+        return false;
+      }
+      if (/^google[a-z0-9]+\.html$/i.test(entry.name)) {
+        return false;
+      }
+      return true;
+    })
     .map((entry) => entry.name);
 
   const urls = [];
@@ -1773,11 +2864,24 @@ async function collectSitemapUrls(siteUrl) {
     urls.push({ loc: `${siteUrl}${routePath}`, lastmod });
   }
 
+  const library = await loadPublicScenarioLibrary();
+  urls.push({
+    loc: `${siteUrl}/scenarios`,
+    lastmod: library.recent[0]?.updatedAt || null,
+  });
+
+  for (const scenario of library.scenarios) {
+    urls.push({
+      loc: `${siteUrl}${scenario.url}`,
+      lastmod: scenario.updatedAt || scenario.publishedAt || null,
+    });
+  }
+
   if (urls.length === 0) {
     urls.push({ loc: siteUrl, lastmod: null });
   }
 
-  return urls;
+  return uniqueSitemapUrls(urls);
 }
 
 function buildSitemapXml(urls) {
@@ -1817,12 +2921,41 @@ function handleRobots(req, res) {
   res.end(content);
 }
 
+function uniqueSitemapUrls(urls) {
+  const byLoc = new Map();
+  for (const entry of urls) {
+    if (!entry?.loc) continue;
+    byLoc.set(entry.loc, entry);
+  }
+  return [...byLoc.values()];
+}
+
+function sendHtml(res, statusCode, html, method = "GET") {
+  res.writeHead(statusCode, {
+    "Content-Type": "text/html; charset=utf-8",
+    "Cache-Control": statusCode >= 400 ? "no-store, max-age=0" : "public, max-age=0, must-revalidate",
+  });
+  if (method === "HEAD") {
+    res.end();
+    return;
+  }
+  res.end(html);
+}
+
 function sendJson(res, statusCode, data) {
   res.writeHead(statusCode, {
     "Content-Type": "application/json; charset=utf-8",
     "Cache-Control": "no-store, max-age=0",
   });
   res.end(JSON.stringify(data));
+}
+
+function redirect(res, statusCode, location) {
+  res.writeHead(statusCode, {
+    Location: location,
+    "Cache-Control": "no-store, max-age=0",
+  });
+  res.end();
 }
 
 function loadEnvFile() {

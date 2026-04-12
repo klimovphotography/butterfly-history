@@ -5,6 +5,9 @@ module.exports = {
       script: "server.mjs",
       cwd: "/root/butterfly",
       interpreter: "node",
+      env: {
+        DATA_DIR: "/root/butterfly-runtime",
+      },
       autorestart: true,
       watch: false,
     },

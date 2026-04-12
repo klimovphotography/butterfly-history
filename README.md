@@ -75,6 +75,7 @@
 - `FAILOVER_ORDER`
 - `SITE_URL`
 - `PORT`
+- `DATA_DIR`
 
 ## Быстрый запуск
 
@@ -102,6 +103,9 @@ AIPRODUCTIV_API_KEY=ваш_ключ
 # необязательно, но полезно для продакшена
 SITE_URL=https://butterfly-history.ru
 FAILOVER_ORDER=wormsoft-gpt-5.2,gemini-2.5-flash,groq-llama-3.1-70b
+
+# папка для живых данных сайта вне git-репозитория
+DATA_DIR=/root/butterfly-runtime
 ```
 
 Запуск:
@@ -415,16 +419,54 @@ npm run dev
 
 Короткие ссылки хранятся не в базе данных, а в JSON-файле:
 
-- runtime-папка: `data/`
-- файл: `data/share-links.json`
+- по умолчанию локально: `.runtime/share-links.json`
+- в продакшене лучше задавать через `DATA_DIR`
+- пример для VPS:
+  - папка: `/root/butterfly-runtime/`
+  - файл: `/root/butterfly-runtime/share-links.json`
 
 Файл создаётся автоматически при первом сохранении ссылки.
 
+Если раньше проект хранил ссылки в `data/share-links.json`, сервер при первом запуске сам перенесёт их в новую runtime-папку.
+
 Это означает:
 
-- в свежем репозитории папки `data/` может не быть
+- в свежем репозитории `.runtime/` может не быть
 - это нормально
 - её создаёт сервер
+
+## VPS и деплой
+
+Для безопасного деплоя на VPS важно разделять:
+
+- код из Git-репозитория
+- живые данные сайта, которые меняются во время работы
+
+Теперь для этого используется `DATA_DIR`.
+
+Рекомендуемая схема:
+
+1. Код лежит в `/root/butterfly`
+2. Живые данные лежат в `/root/butterfly-runtime`
+3. `pm2` запускает сайт с `DATA_DIR=/root/butterfly-runtime`
+
+Если вы деплоите через `git pull`, это защищает короткие ссылки от случайного конфликта с Git.
+
+Пример команд на VPS:
+
+```bash
+cd /root/butterfly
+git pull
+npm install
+pm2 restart ecosystem.config.cjs --only butterfly --update-env
+```
+
+Проверить, что runtime-папка используется:
+
+```bash
+pm2 show butterfly
+ls -la /root/butterfly-runtime
+```
 
 ## Карта файлов
 
