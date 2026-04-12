@@ -2074,11 +2074,11 @@ function renderArchivePreviewSection(library, options = {}) {
       <section class="content-section" aria-labelledby="archive-preview-title">
         <div class="section-head">
           <div>
-            <p class="section-eyebrow">Архив</p>
-            <h2 id="archive-preview-title" class="section-heading">${escapeHtmlAttr(title)}</h2>
-            <p class="section-copy">${escapeHtmlAttr(subtitle)}</p>
+            <p class="section-eyebrow" data-page-i18n="archivePreviewEyebrow">Архив</p>
+            <h2 id="archive-preview-title" class="section-heading" data-page-i18n="archivePreviewTitle">${escapeHtmlAttr(title)}</h2>
+            <p class="section-copy" data-page-i18n="archivePreviewSubtitle">${escapeHtmlAttr(subtitle)}</p>
           </div>
-          <a class="hero-link" href="/scenarios">Открыть весь архив</a>
+          <a class="hero-link" href="/scenarios" data-page-i18n="archivePreviewLink">Открыть весь архив</a>
         </div>
         <div class="scenario-grid">
           ${scenarios.map((scenario) => renderScenarioCard(scenario)).join("\n")}
@@ -2089,38 +2089,38 @@ function renderArchivePreviewSection(library, options = {}) {
 function renderArchivePage(library, filteredScenarios, filters) {
   return `
       <section class="page-lead archive-lead">
-        <p class="eyebrow">Публичный архив</p>
-        <h1>Сценарии альтернативной истории</h1>
-        <p class="subtitle">
+        <p class="eyebrow" data-page-i18n="archiveEyebrow">Публичный архив</p>
+        <h1 data-page-i18n="archiveTitle">Сценарии альтернативной истории</h1>
+        <p class="subtitle" data-page-i18n="archiveSubtitle">
           Отобранные публикации с самостоятельными URL, метаданными и внутренними переходами. Это уже не просто генератор, а библиотека развилок.
         </p>
         <div class="hero-stats archive-stats">
           <div class="hero-stat">
             <span class="hero-stat-value">${library.totalCount}</span>
-            <span class="hero-stat-label">опубликованных сценариев</span>
+            <span class="hero-stat-label" data-page-i18n="archiveStatPublished">опубликованных сценариев</span>
           </div>
           <div class="hero-stat">
             <span class="hero-stat-value">${library.facets.themes.length}</span>
-            <span class="hero-stat-label">основных тем</span>
+            <span class="hero-stat-label" data-page-i18n="archiveStatThemes">основных тем</span>
           </div>
           <div class="hero-stat">
             <span class="hero-stat-value">${library.facets.eras.length}</span>
-            <span class="hero-stat-label">эпох и периодов</span>
+            <span class="hero-stat-label" data-page-i18n="archiveStatEras">эпох и периодов</span>
           </div>
         </div>
       </section>
       <section class="content-section filters-shell" aria-labelledby="archive-filters-title">
         <div class="section-head compact">
           <div>
-            <p class="section-eyebrow">Навигация</p>
-            <h2 id="archive-filters-title" class="section-heading">Фильтры и таксономия</h2>
-            <p class="section-copy">
+            <p class="section-eyebrow" data-page-i18n="archiveNavigationEyebrow">Навигация</p>
+            <h2 id="archive-filters-title" class="section-heading" data-page-i18n="archiveFiltersTitle">Фильтры и таксономия</h2>
+            <p id="archive-filters-copy" class="section-copy">
               ${filters.hasFilters
                 ? `Сейчас показаны сценарии по фильтру: ${escapeHtmlAttr(formatActiveFilterSummary(filters))}.`
                 : "Фильтруйте по стране, эпохе, теме и тону, чтобы архив был удобен и людям, и поисковикам."}
             </p>
           </div>
-          ${filters.hasFilters ? '<a class="hero-link" href="/scenarios">Сбросить фильтры</a>' : ""}
+          ${filters.hasFilters ? '<a class="hero-link" href="/scenarios" data-page-i18n="archiveResetFilters">Сбросить фильтры</a>' : ""}
         </div>
         <div class="filter-groups">
           ${renderFilterGroup("Страна", "country", library.facets.countries, filters)}
@@ -2132,14 +2132,14 @@ function renderArchivePage(library, filteredScenarios, filters) {
       <section class="content-section" aria-labelledby="archive-grid-title">
         <div class="section-head compact">
           <div>
-            <p class="section-eyebrow">Результаты</p>
-            <h2 id="archive-grid-title" class="section-heading">Доступные сценарии</h2>
-            <p class="section-copy">Найдено сценариев: ${filteredScenarios.length}.</p>
+            <p class="section-eyebrow" data-page-i18n="archiveResultsEyebrow">Результаты</p>
+            <h2 id="archive-grid-title" class="section-heading" data-page-i18n="archiveResultsTitle">Доступные сценарии</h2>
+            <p id="archive-results-count" class="section-copy" data-count="${filteredScenarios.length}">Найдено сценариев: ${filteredScenarios.length}.</p>
           </div>
         </div>
         ${filteredScenarios.length
           ? `<div class="scenario-grid">${filteredScenarios.map((scenario) => renderScenarioCard(scenario)).join("\n")}</div>`
-          : '<div class="empty-state"><h3>Под этот фильтр пока нет сценариев.</h3><p>Попробуйте снять часть ограничений или открыть весь архив.</p></div>'}
+          : '<div class="empty-state"><h3 data-page-i18n="archiveEmptyTitle">Под этот фильтр пока нет сценариев.</h3><p data-page-i18n="archiveEmptyCopy">Попробуйте снять часть ограничений или открыть весь архив.</p></div>'}
       </section>`;
 }
 
@@ -2150,29 +2150,29 @@ function renderPublicScenarioPage(scenario, library) {
 
   return `
       <section class="page-lead scenario-lead">
-        <nav class="breadcrumbs" aria-label="Хлебные крошки">
-          <a href="/">Главная</a>
+        <nav class="breadcrumbs" aria-label="Хлебные крошки" data-page-i18n-attr="aria-label" data-page-i18n-attr-key="breadcrumbAria">
+          <a href="/" data-page-i18n="scenarioBreadcrumbHome">Главная</a>
           <span>/</span>
-          <a href="/scenarios">Архив сценариев</a>
+          <a href="/scenarios" data-page-i18n="scenarioBreadcrumbArchive">Архив сценариев</a>
           <span>/</span>
           <span>${escapeHtmlAttr(scenario.title)}</span>
         </nav>
-        <p class="eyebrow">Публичный сценарий</p>
+        <p class="eyebrow" data-page-i18n="publicScenarioEyebrow">Публичный сценарий</p>
         <h1>${escapeHtmlAttr(scenario.title)}</h1>
         <p class="subtitle">${escapeHtmlAttr(scenario.subtitle || scenario.summary)}</p>
         <div class="taxonomy-pills">
           ${renderScenarioPills(scenario)}
-          <span class="taxonomy-pill">${scenario.readingMinutes} мин чтения</span>
+          <span id="scenario-reading-time" class="taxonomy-pill" data-count="${scenario.readingMinutes}">${scenario.readingMinutes} мин чтения</span>
         </div>
         <div class="hero-actions">
-          <a class="hero-link hero-link-primary" href="#workspace">Смоделировать свою развилку</a>
-          <a class="hero-link" href="/scenarios">Вернуться в архив</a>
+          <a class="hero-link hero-link-primary" href="#workspace" data-page-i18n="scenarioPrimaryCta">Смоделировать свою развилку</a>
+          <a class="hero-link" href="/scenarios" data-page-i18n="scenarioSecondaryCta">Вернуться в архив</a>
         </div>
       </section>
       <article class="story-card" aria-labelledby="story-title">
         <div class="story-summary">
-          <p class="section-eyebrow">Краткий заход</p>
-          <h2 id="story-title" class="section-heading">Что меняется в этой версии истории</h2>
+          <p class="section-eyebrow" data-page-i18n="storyEyebrow">Краткий заход</p>
+          <h2 id="story-title" class="section-heading" data-page-i18n="storyTitle">Что меняется в этой версии истории</h2>
           <p class="story-summary-copy">${escapeHtmlAttr(scenario.summary)}</p>
         </div>
         <div class="story-body">
@@ -2182,15 +2182,15 @@ function renderPublicScenarioPage(scenario, library) {
       <section class="content-section" aria-labelledby="discovery-title">
         <div class="section-head compact">
           <div>
-            <p class="section-eyebrow">Что читать дальше</p>
-            <h2 id="discovery-title" class="section-heading">Внутренние переходы</h2>
-            <p class="section-copy">Сценарий должен вести дальше по сайту. Поэтому рядом всегда есть похожие, свежие и популярные развилки.</p>
+            <p class="section-eyebrow" data-page-i18n="discoveryEyebrow">Что читать дальше</p>
+            <h2 id="discovery-title" class="section-heading" data-page-i18n="discoveryTitle">Внутренние переходы</h2>
+            <p class="section-copy" data-page-i18n="discoveryCopy">Сценарий должен вести дальше по сайту. Поэтому рядом всегда есть похожие, свежие и популярные развилки.</p>
           </div>
         </div>
         <div class="discovery-columns">
-          ${renderScenarioListBlock("Похожие сценарии", "Ближайшие страницы по эпохе, теме и стране.", related)}
-          ${renderScenarioListBlock("Свежие публикации", "Новые материалы, которые уже добавлены в архив.", recent)}
-          ${renderScenarioListBlock("Популярные развилки", "Сценарии, которые логично ставить в верхнюю навигацию архива.", popular)}
+          ${renderScenarioListBlock("relatedTitle", "Похожие сценарии", "relatedCopy", "Ближайшие страницы по эпохе, теме и стране.", related)}
+          ${renderScenarioListBlock("recentTitle", "Свежие публикации", "recentCopy", "Новые материалы, которые уже добавлены в архив.", recent)}
+          ${renderScenarioListBlock("popularTitle", "Популярные развилки", "popularCopy", "Сценарии, которые логично ставить в верхнюю навигацию архива.", popular)}
         </div>
       </section>`;
 }
@@ -2199,42 +2199,59 @@ function renderNotFoundSection() {
   return `
       <section class="page-lead not-found-lead">
         <p class="eyebrow">404</p>
-        <h1>Эта ветка истории не найдена</h1>
-        <p class="subtitle">
+        <h1 data-page-i18n="notFoundTitle">Эта ветка истории не найдена</h1>
+        <p class="subtitle" data-page-i18n="notFoundSubtitle">
           Возможно, ссылка устарела или сценарий еще не был опубликован. Ниже можно открыть архив или запустить новую генерацию.
         </p>
         <div class="hero-actions">
-          <a class="hero-link hero-link-primary" href="/scenarios">Открыть архив</a>
-          <a class="hero-link" href="#workspace">Создать новый сценарий</a>
+          <a class="hero-link hero-link-primary" href="/scenarios" data-page-i18n="notFoundPrimaryCta">Открыть архив</a>
+          <a class="hero-link" href="#workspace" data-page-i18n="notFoundSecondaryCta">Создать новый сценарий</a>
         </div>
       </section>`;
 }
 
+function getModeIdFromToneLabel(tone) {
+  const normalized = String(tone || "").trim().toLowerCase();
+  if (normalized === "реализм" || normalized === "realism") return "realism";
+  if (normalized === "мрачная хроника" || normalized === "dark chronicle") return "dark";
+  if (normalized === "эпоха процветания" || normalized === "age of prosperity") {
+    return "prosperity";
+  }
+  if (normalized === "безумие" || normalized === "madness") return "madness";
+  if (normalized === "юмор" || normalized === "humor") return "humor";
+  return "";
+}
+
 function renderScenarioCard(scenario) {
+  const toneModeId = getModeIdFromToneLabel(scenario.tone);
+  const toneMarkup = toneModeId
+    ? `<span data-mode-label="true" data-mode-id="${escapeHtmlAttr(toneModeId)}">${escapeHtmlAttr(scenario.tone)}</span>`
+    : `<span>${escapeHtmlAttr(scenario.tone)}</span>`;
+
   return `
             <article class="scenario-card">
               <div class="scenario-card-meta">
                 <span>${escapeHtmlAttr(scenario.era)}</span>
-                <span>${escapeHtmlAttr(scenario.tone)}</span>
+                ${toneMarkup}
               </div>
               <h3><a href="${escapeHtmlAttr(scenario.url)}">${escapeHtmlAttr(scenario.title)}</a></h3>
               <p class="scenario-card-copy">${escapeHtmlAttr(scenario.description)}</p>
               <div class="taxonomy-pills compact">
                 ${renderScenarioPills(scenario)}
               </div>
-              <a class="scenario-card-link" href="${escapeHtmlAttr(scenario.url)}">Читать сценарий</a>
+              <a class="scenario-card-link" href="${escapeHtmlAttr(scenario.url)}" data-page-i18n="archiveReadLink">Читать сценарий</a>
             </article>`;
 }
 
-function renderScenarioListBlock(title, description, scenarios) {
+function renderScenarioListBlock(titleKey, title, descriptionKey, description, scenarios) {
   if (!scenarios.length) {
     return "";
   }
 
   return `
             <section class="list-block">
-              <h3>${escapeHtmlAttr(title)}</h3>
-              <p>${escapeHtmlAttr(description)}</p>
+              <h3 data-page-i18n="${escapeHtmlAttr(titleKey)}">${escapeHtmlAttr(title)}</h3>
+              <p data-page-i18n="${escapeHtmlAttr(descriptionKey)}">${escapeHtmlAttr(description)}</p>
               <ul>
                 ${scenarios
                   .map(
@@ -2248,14 +2265,19 @@ function renderScenarioListBlock(title, description, scenarios) {
 
 function renderScenarioPills(scenario) {
   const pills = [
-    scenario.countries[0],
-    scenario.era,
-    scenario.themes[0],
-    scenario.tone,
-  ].filter(Boolean);
+    { label: scenario.countries[0], modeId: "" },
+    { label: scenario.era, modeId: "" },
+    { label: scenario.themes[0], modeId: "" },
+    { label: scenario.tone, modeId: getModeIdFromToneLabel(scenario.tone) },
+  ].filter((entry) => entry.label);
 
   return pills
-    .map((label) => `<span class="taxonomy-pill">${escapeHtmlAttr(label)}</span>`)
+    .map((entry) => {
+      const modeAttrs = entry.modeId
+        ? ` data-mode-label="true" data-mode-id="${escapeHtmlAttr(entry.modeId)}"`
+        : "";
+      return `<span class="taxonomy-pill"${modeAttrs}>${escapeHtmlAttr(entry.label)}</span>`;
+    })
     .join("\n");
 }
 
@@ -2264,9 +2286,17 @@ function renderFilterGroup(title, key, items, filters) {
     return "";
   }
 
+  const titleKeys = {
+    country: "archiveFilterCountry",
+    era: "archiveFilterEra",
+    theme: "archiveFilterTheme",
+    tone: "archiveFilterTone",
+  };
+  const titleKey = titleKeys[key] || "";
+
   return `
             <section class="filter-group" aria-label="${escapeHtmlAttr(title)}">
-              <h3>${escapeHtmlAttr(title)}</h3>
+              <h3${titleKey ? ` data-page-i18n="${escapeHtmlAttr(titleKey)}"` : ""}>${escapeHtmlAttr(title)}</h3>
               <div class="filter-pills">
                 ${items
                   .map((item) => {
@@ -2279,7 +2309,11 @@ function renderFilterGroup(title, key, items, filters) {
                       [key]: isActive ? "" : item.label,
                     };
                     const href = buildArchiveHref(nextFilters);
-                    return `<a class="filter-pill${isActive ? " is-active" : ""}" href="${escapeHtmlAttr(href)}">${escapeHtmlAttr(item.label)} <span>${item.count}</span></a>`;
+                    const toneModeId = key === "tone" ? getModeIdFromToneLabel(item.label) : "";
+                    const labelMarkup = toneModeId
+                      ? `<span data-mode-label="true" data-mode-id="${escapeHtmlAttr(toneModeId)}">${escapeHtmlAttr(item.label)}</span>`
+                      : escapeHtmlAttr(item.label);
+                    return `<a class="filter-pill${isActive ? " is-active" : ""}" href="${escapeHtmlAttr(href)}">${labelMarkup} <span>${item.count}</span></a>`;
                   })
                   .join("\n")}
               </div>

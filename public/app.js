@@ -121,6 +121,58 @@ const TRANSLATIONS = {
     heroFeature1: "Тот же генератор, но с более сильной подачей",
     heroFeature2: "5 режимов альтернативной истории",
     heroFeature3: "Готовые карточки для шаринга",
+    archivePreviewEyebrow: "Архив",
+    archivePreviewTitle: "Публичный архив сценариев",
+    archivePreviewSubtitle:
+      "Сильные сценарии теперь живут не только в чате, но и как отдельные страницы, по которым можно ходить дальше.",
+    archivePreviewLink: "Открыть весь архив",
+    archiveReadLink: "Читать сценарий",
+    archiveEyebrow: "Публичный архив",
+    archiveTitle: "Сценарии альтернативной истории",
+    archiveSubtitle:
+      "Отобранные публикации с самостоятельными URL, метаданными и внутренними переходами. Это уже не просто генератор, а библиотека развилок.",
+    archiveStatPublished: "опубликованных сценариев",
+    archiveStatThemes: "основных тем",
+    archiveStatEras: "эпох и периодов",
+    archiveNavigationEyebrow: "Навигация",
+    archiveFiltersTitle: "Фильтры и таксономия",
+    archiveFiltersDefaultCopy:
+      "Фильтруйте по стране, эпохе, теме и тону, чтобы архив был удобен и людям, и поисковикам.",
+    archiveFiltersActiveCopy: "Сейчас показаны сценарии по фильтру: {filters}.",
+    archiveResetFilters: "Сбросить фильтры",
+    archiveFilterCountry: "Страна",
+    archiveFilterEra: "Эпоха",
+    archiveFilterTheme: "Тема",
+    archiveFilterTone: "Тон",
+    archiveResultsEyebrow: "Результаты",
+    archiveResultsTitle: "Доступные сценарии",
+    archiveResultsCount: "Найдено сценариев: {count}.",
+    archiveEmptyTitle: "Под этот фильтр пока нет сценариев.",
+    archiveEmptyCopy: "Попробуйте снять часть ограничений или открыть весь архив.",
+    breadcrumbAria: "Хлебные крошки",
+    scenarioBreadcrumbHome: "Главная",
+    scenarioBreadcrumbArchive: "Архив сценариев",
+    publicScenarioEyebrow: "Публичный сценарий",
+    scenarioReadingTime: "{count} мин чтения",
+    scenarioPrimaryCta: "Смоделировать свою развилку",
+    scenarioSecondaryCta: "Вернуться в архив",
+    storyEyebrow: "Краткий заход",
+    storyTitle: "Что меняется в этой версии истории",
+    discoveryEyebrow: "Что читать дальше",
+    discoveryTitle: "Внутренние переходы",
+    discoveryCopy:
+      "Сценарий должен вести дальше по сайту. Поэтому рядом всегда есть похожие, свежие и популярные развилки.",
+    relatedTitle: "Похожие сценарии",
+    relatedCopy: "Ближайшие страницы по эпохе, теме и стране.",
+    recentTitle: "Свежие публикации",
+    recentCopy: "Новые материалы, которые уже добавлены в архив.",
+    popularTitle: "Популярные развилки",
+    popularCopy: "Сценарии, которые логично ставить в верхнюю навигацию архива.",
+    notFoundTitle: "Эта ветка истории не найдена",
+    notFoundSubtitle:
+      "Возможно, ссылка устарела или сценарий еще не был опубликован. Ниже можно открыть архив или запустить новую генерацию.",
+    notFoundPrimaryCta: "Открыть архив",
+    notFoundSecondaryCta: "Создать новый сценарий",
     panelLabel: "Scenario Engine",
     panelTitle: "Современная подача для вашего генератора",
     panelCopy:
@@ -215,6 +267,58 @@ const TRANSLATIONS = {
     heroFeature1: "The same generator with a much stronger product feel",
     heroFeature2: "5 alternate-history modes",
     heroFeature3: "Ready-made cards for sharing",
+    archivePreviewEyebrow: "Archive",
+    archivePreviewTitle: "Public Scenario Archive",
+    archivePreviewSubtitle:
+      "Strong scenarios no longer live only in the chat. They now have standalone pages you can keep exploring.",
+    archivePreviewLink: "Open the full archive",
+    archiveReadLink: "Read scenario",
+    archiveEyebrow: "Public Archive",
+    archiveTitle: "Alternate History Scenarios",
+    archiveSubtitle:
+      "Selected publications with standalone URLs, metadata, and internal links. This is no longer just a generator, but a library of turning points.",
+    archiveStatPublished: "published scenarios",
+    archiveStatThemes: "main themes",
+    archiveStatEras: "eras and periods",
+    archiveNavigationEyebrow: "Navigation",
+    archiveFiltersTitle: "Filters and Taxonomy",
+    archiveFiltersDefaultCopy:
+      "Filter by country, era, theme, and tone to make the archive useful for both people and search engines.",
+    archiveFiltersActiveCopy: "Scenarios are currently filtered by: {filters}.",
+    archiveResetFilters: "Clear filters",
+    archiveFilterCountry: "Country",
+    archiveFilterEra: "Era",
+    archiveFilterTheme: "Theme",
+    archiveFilterTone: "Tone",
+    archiveResultsEyebrow: "Results",
+    archiveResultsTitle: "Available Scenarios",
+    archiveResultsCount: "Scenarios found: {count}.",
+    archiveEmptyTitle: "No scenarios match this filter yet.",
+    archiveEmptyCopy: "Try removing some filters or open the full archive.",
+    breadcrumbAria: "Breadcrumbs",
+    scenarioBreadcrumbHome: "Home",
+    scenarioBreadcrumbArchive: "Scenario Archive",
+    publicScenarioEyebrow: "Public Scenario",
+    scenarioReadingTime: "{count} min read",
+    scenarioPrimaryCta: "Model your own turning point",
+    scenarioSecondaryCta: "Back to archive",
+    storyEyebrow: "Quick Brief",
+    storyTitle: "What changes in this version of history",
+    discoveryEyebrow: "What to read next",
+    discoveryTitle: "Internal Navigation",
+    discoveryCopy:
+      "Each scenario should lead deeper into the site. That is why similar, recent, and popular turning points are always nearby.",
+    relatedTitle: "Related Scenarios",
+    relatedCopy: "The closest pages by era, theme, and country.",
+    recentTitle: "Recent Publications",
+    recentCopy: "New materials already added to the archive.",
+    popularTitle: "Popular Turning Points",
+    popularCopy: "Scenarios that work well in the archive's top navigation.",
+    notFoundTitle: "This branch of history was not found",
+    notFoundSubtitle:
+      "The link may be outdated, or the scenario has not been published yet. You can open the archive below or start a new generation.",
+    notFoundPrimaryCta: "Open the archive",
+    notFoundSecondaryCta: "Create a new scenario",
     panelLabel: "Scenario Engine",
     panelTitle: "A modern product look for your generator",
     panelCopy:
@@ -435,6 +539,14 @@ function t(key) {
   return active[key] || TRANSLATIONS.ru[key] || key;
 }
 
+function formatT(key, params = {}) {
+  let template = t(key);
+  for (const [param, value] of Object.entries(params)) {
+    template = template.split(`{${param}}`).join(String(value));
+  }
+  return template;
+}
+
 function setLanguage(nextLanguage, options = {}) {
   const { persist = true } = options;
   currentLanguage = normalizeLanguage(nextLanguage);
@@ -575,6 +687,7 @@ function applyTranslations() {
 
   button.textContent = isLoading ? t("submitBusy") : t("submitIdle");
   syncDynamicTextLanguage();
+  syncStaticPageLanguage();
 }
 
 function syncDynamicTextLanguage() {
@@ -633,6 +746,115 @@ function syncDynamicTextLanguage() {
     const formatButton = /** @type {HTMLButtonElement} */ (buttonElement);
     formatButton.textContent = getCardFormatLabel(formatButton.dataset.formatId || "");
   }
+}
+
+function syncStaticPageLanguage() {
+  for (const element of document.querySelectorAll("[data-page-i18n]")) {
+    const key = element.dataset.pageI18n || "";
+    if (!key) continue;
+    element.textContent = t(key);
+  }
+
+  for (const element of document.querySelectorAll("[data-page-i18n-attr-key]")) {
+    const key = element.dataset.pageI18nAttrKey || "";
+    if (!key) continue;
+    const attribute = element.dataset.pageI18nAttr || "aria-label";
+    element.setAttribute(attribute, t(key));
+  }
+
+  for (const element of document.querySelectorAll("[data-mode-label][data-mode-id]")) {
+    const modeId = element.dataset.modeId || "";
+    if (!modeId) continue;
+    element.textContent = getModeLabel(modeId);
+  }
+
+  const archiveResultsCount = document.getElementById("archive-results-count");
+  if (archiveResultsCount) {
+    archiveResultsCount.textContent = formatT("archiveResultsCount", {
+      count: archiveResultsCount.dataset.count || "0",
+    });
+  }
+
+  const scenarioReadingTime = document.getElementById("scenario-reading-time");
+  if (scenarioReadingTime) {
+    scenarioReadingTime.textContent = formatT("scenarioReadingTime", {
+      count: scenarioReadingTime.dataset.count || "0",
+    });
+  }
+
+  syncArchiveFilterCopy();
+}
+
+function syncArchiveFilterCopy() {
+  const archiveFiltersCopy = document.getElementById("archive-filters-copy");
+  if (!archiveFiltersCopy) return;
+
+  const filters = getArchiveFiltersFromLocation();
+  if (!hasActiveArchiveFilters(filters)) {
+    archiveFiltersCopy.textContent = t("archiveFiltersDefaultCopy");
+    return;
+  }
+
+  archiveFiltersCopy.textContent = formatT("archiveFiltersActiveCopy", {
+    filters: formatArchiveFilterSummary(filters),
+  });
+}
+
+function getArchiveFiltersFromLocation() {
+  const params = new URLSearchParams(window.location.search);
+  return {
+    country: String(params.get("country") || "").trim(),
+    era: String(params.get("era") || "").trim(),
+    theme: String(params.get("theme") || "").trim(),
+    tone: String(params.get("tone") || "").trim(),
+    lang: String(params.get("lang") || "").trim(),
+  };
+}
+
+function hasActiveArchiveFilters(filters) {
+  return Boolean(
+    filters.country ||
+    filters.era ||
+    filters.theme ||
+    filters.tone ||
+    filters.lang
+  );
+}
+
+function formatArchiveFilterSummary(filters) {
+  const toneModeId = resolveModeIdFromLabel(filters.tone);
+  const toneLabel = toneModeId ? getModeLabel(toneModeId) : filters.tone;
+  return [
+    filters.country,
+    filters.era,
+    filters.theme,
+    toneLabel,
+    getLanguageFilterLabel(filters.lang),
+  ]
+    .filter(Boolean)
+    .join(" / ");
+}
+
+function getLanguageFilterLabel(value) {
+  if (value === "en") {
+    return "English";
+  }
+  if (value === "ru") {
+    return currentLanguage === "en" ? "Russian" : "Русский";
+  }
+  return "";
+}
+
+function resolveModeIdFromLabel(label) {
+  const normalized = String(label || "").trim().toLowerCase();
+  if (normalized === "реализм" || normalized === "realism") return "realism";
+  if (normalized === "мрачная хроника" || normalized === "dark chronicle") return "dark";
+  if (normalized === "эпоха процветания" || normalized === "age of prosperity") {
+    return "prosperity";
+  }
+  if (normalized === "безумие" || normalized === "madness") return "madness";
+  if (normalized === "юмор" || normalized === "humor") return "humor";
+  return "";
 }
 
 function initModeTabs() {
