@@ -7,9 +7,22 @@ const inputActions = document.querySelector(".input-actions");
 const providerPill = document.getElementById("provider-pill");
 const languageButton = document.getElementById("language-toggle");
 const modeTabs = document.querySelectorAll(".mode-tab");
+const donateButton = document.getElementById("donate-cta");
+const projectTelegramLink = document.getElementById("project-telegram-link");
 const mobileButtonLayout = window.matchMedia("(max-width: 720px)");
 const randomButtonDefaultParent = randomButton?.parentElement || null;
 const randomButtonDefaultNextSibling = randomButton?.nextElementSibling || null;
+const METRIKA_COUNTER_ID = 107694909;
+const METRIKA_GOALS = Object.freeze({
+  generationStarted: "bh_generation_started",
+  generationCompleted: "bh_generation_completed",
+  archivePageViewed: "bh_archive_page_viewed",
+  scenarioPageViewed: "bh_scenario_page_viewed",
+  scenarioPngOpened: "bh_scenario_png_opened",
+  scenarioShareClicked: "bh_scenario_share_clicked",
+  donationClicked: "bh_donation_clicked",
+  telegramClicked: "bh_telegram_clicked",
+});
 
 const CURRENT_YEAR = new Date().getFullYear();
 window.__SCENARIO_PAYLOAD__ = typeof window.__SCENARIO_PAYLOAD__ === "string"
@@ -425,16 +438,22 @@ const CARD_CAPTURE_LAYOUT_SIZES = {
   square: { width: 720, height: 720 },
   landscape: { width: 960, height: 540 },
 };
+let hasTrackedInitialPageView = false;
 
 
 initModeTabs();
 initLanguageSwitcher();
 setLanguage(currentLanguage, { persist: false });
 syncRandomButtonLayout();
+initAnalyticsBindings();
 
 loadProviderMeta();
 if (!PAGE_CONTEXT.disableScenarioHydration) {
-  void hydrateScenarioFromUrl();
+  void hydrateScenarioFromUrl().finally(() => {
+    trackInitialPageView();
+  });
+} else {
+  trackInitialPageView();
 }
 
 if (typeof mobileButtonLayout.addEventListener === "function") {
@@ -480,6 +499,12 @@ async function startScenario(rawText) {
   const eventText = rawText.trim();
   if (!eventText || isLoading) return;
 
+  trackMetrikaGoal(METRIKA_GOALS.generationStarted, {
+    page_kind: getAnalyticsPageKind(),
+    language: currentLanguage,
+    mode: activeMode,
+  });
+
   addTextMessage("user", eventText);
   form.reset();
 
@@ -518,6 +543,14 @@ async function requestScenario(payload) {
       return;
     }
 
+    trackMetrikaGoal(METRIKA_GOALS.generationCompleted, {
+      page_kind: getAnalyticsPageKind(),
+      language: payload.language,
+      mode: payload.mode,
+      provider: scenario.provider || data?.provider || "",
+      model: scenario.modelLabel || data?.modelLabel || "",
+    });
+
     updateProviderPill(scenario.provider, scenario.modelLabel);
     addScenarioMessage(scenario, { interactive: true, mode: payload.mode });
   } catch {
@@ -545,6 +578,98 @@ function formatT(key, params = {}) {
     template = template.split(`{${param}}`).join(String(value));
   }
   return template;
+}
+
+function sanitizeMetrikaParams(params = {}) {
+  const result = {};
+
+  for (const [key, value] of Object.entries(params)) {
+    if (value === "" || value === null || value === undefined) continue;
+
+    if (typeof value === "number" && Number.isFinite(value)) {
+      result[key] = value;
+      continue;
+    }
+
+    if (typeof value === "boolean") {
+      result[key] = value ? 1 : 0;
+      continue;
+    }
+
+    const text = String(value).trim();
+    if (!text) continue;
+    result[key] = text.length > 120 ? `${text.slice(0, 117)}...` : text;
+  }
+
+  return result;
+}
+
+function trackMetrikaGoal(goal, params = {}) {
+  const goalId = String(goal || "").trim();
+  if (!goalId) return false;
+  if (typeof window === "undefined" || typeof window.ym !== "function") {
+    return false;
+  }
+
+  const payload = sanitizeMetrikaParams(params);
+
+  try {
+    if (Object.keys(payload).length > 0) {
+      window.ym(METRIKA_COUNTER_ID, "reachGoal", goalId, payload);
+    } else {
+      window.ym(METRIKA_COUNTER_ID, "reachGoal", goalId);
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+function getAnalyticsPageKind() {
+  const kind = String(PAGE_CONTEXT.kind || "home").trim();
+  if (kind === "public-scenario") return "public_scenario";
+  if (kind === "shared") return "shared_scenario";
+  return kind || "home";
+}
+
+function trackInitialPageView() {
+  if (hasTrackedInitialPageView) return;
+  hasTrackedInitialPageView = true;
+
+  const pageKind = getAnalyticsPageKind();
+
+  if (pageKind === "archive") {
+    const filters = getArchiveFiltersFromLocation();
+    trackMetrikaGoal(METRIKA_GOALS.archivePageViewed, {
+      page_kind: pageKind,
+      language: currentLanguage,
+      has_filters: hasActiveArchiveFilters(filters),
+    });
+    return;
+  }
+
+  if (pageKind === "public_scenario" || pageKind === "shared_scenario") {
+    trackMetrikaGoal(METRIKA_GOALS.scenarioPageViewed, {
+      page_kind: pageKind,
+      language: currentLanguage,
+    });
+  }
+}
+
+function initAnalyticsBindings() {
+  donateButton?.addEventListener("click", () => {
+    trackMetrikaGoal(METRIKA_GOALS.donationClicked, {
+      page_kind: getAnalyticsPageKind(),
+      language: currentLanguage,
+    });
+  });
+
+  projectTelegramLink?.addEventListener("click", () => {
+    trackMetrikaGoal(METRIKA_GOALS.telegramClicked, {
+      page_kind: getAnalyticsPageKind(),
+      language: currentLanguage,
+    });
+  });
 }
 
 function setLanguage(nextLanguage, options = {}) {
@@ -1475,6 +1600,8 @@ async function openShareCardImage(target, card, format) {
     return false;
   }
 
+  const shareMethod = shouldUseNativeCardShare() ? "native_share" : "download";
+
   try {
     const asset = await renderShareCardAsset(target, format);
     if (!asset?.blob && !asset?.dataUrl) {
@@ -1504,6 +1631,14 @@ async function openShareCardImage(target, card, format) {
     if (file) {
       window.setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
     }
+
+    trackMetrikaGoal(METRIKA_GOALS.scenarioPngOpened, {
+      page_kind: getAnalyticsPageKind(),
+      language: currentLanguage,
+      format: resolveCardFormat(format),
+      method: shareMethod,
+    });
+
     return true;
   } catch {
     return false;
@@ -1561,6 +1696,14 @@ async function shareScenarioCard(target, payload, format) {
 
   if (typeof navigator.share !== "function") {
     const copied = await copyTextToClipboard(`${teaser}\n\n${shareUrl}`);
+    if (copied) {
+      trackMetrikaGoal(METRIKA_GOALS.scenarioShareClicked, {
+        page_kind: getAnalyticsPageKind(),
+        language: currentLanguage,
+        network: "copy",
+        format: resolveCardFormat(format),
+      });
+    }
     return copied ? "copied" : "failed";
   }
 
@@ -1570,6 +1713,12 @@ async function shareScenarioCard(target, payload, format) {
       text: teaser,
       url: shareUrl,
     });
+    trackMetrikaGoal(METRIKA_GOALS.scenarioShareClicked, {
+      page_kind: getAnalyticsPageKind(),
+      language: currentLanguage,
+      network: "native",
+      format: resolveCardFormat(format),
+    });
     return "native";
   } catch {
     return "failed";
@@ -1578,6 +1727,7 @@ async function shareScenarioCard(target, payload, format) {
 
 async function openSocialShareWindow(network, payload) {
   let popup = null;
+  const resolvedNetwork = String(network || "").trim().toLowerCase();
 
   try {
     if (typeof window.open === "function") {
@@ -1585,7 +1735,7 @@ async function openSocialShareWindow(network, payload) {
     }
 
     const shareUrl = await resolveShareUrl(payload);
-    const socialUrl = buildSocialShareUrl(network, payload, shareUrl);
+    const socialUrl = buildSocialShareUrl(resolvedNetwork, payload, shareUrl);
     if (!socialUrl) {
       popup?.close?.();
       return false;
@@ -1594,6 +1744,11 @@ async function openSocialShareWindow(network, payload) {
     if (popup && !popup.closed) {
       popup.location.replace(socialUrl);
       popup.focus?.();
+      trackMetrikaGoal(METRIKA_GOALS.scenarioShareClicked, {
+        page_kind: getAnalyticsPageKind(),
+        language: currentLanguage,
+        network: resolvedNetwork,
+      });
       return true;
     }
 
@@ -1604,6 +1759,11 @@ async function openSocialShareWindow(network, payload) {
     document.body.append(link);
     link.click();
     link.remove();
+    trackMetrikaGoal(METRIKA_GOALS.scenarioShareClicked, {
+      page_kind: getAnalyticsPageKind(),
+      language: currentLanguage,
+      network: resolvedNetwork,
+    });
     return true;
   } catch {
     popup?.close?.();

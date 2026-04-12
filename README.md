@@ -482,6 +482,18 @@ npm run publish:scenario -- --share-id FopiMOU --status share-only
 - кураторский manifest публикаций:
   - `data/public-scenarios.json`
 
+## События Яндекс.Метрики
+
+Во фронтенд уже встроены события `reachGoal`.
+
+Но важно:
+
+- в интерфейсе Yandex Metrika нужно создать JavaScript-цели с этими же именами
+
+Список и значения:
+
+- см. [docs/metrika-goals.md](/Users/vasilijklimov/Documents/Codex project/docs/metrika-goals.md)
+
 ## VPS и деплой
 
 Для безопасного деплоя на VPS важно разделять:
