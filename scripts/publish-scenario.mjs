@@ -12,13 +12,14 @@ const repoRoot = path.resolve(__dirname, "..");
 const QUALITY_LABELS = {
   slug: "Нужен чистый slug (латиница, цифры и дефисы).",
   title: "Заголовок слишком короткий.",
-  narrative: "Текст сценария слишком короткий для отдельной страницы.",
+  narrative: "Текст сценария слишком короткий для отдельной SEO-страницы.",
   paragraphs: "Нужно хотя бы 3 смысловых абзаца.",
   summary: "Нужно нормальное summary (краткое описание) хотя бы на 90 символов.",
-  description: "Нужно осмысленное description (описание) хотя бы на 90 символов.",
+  description: "Нужно осмысленное description (описание) хотя бы на 120 символов.",
   countries: "Для public-страницы укажи хотя бы одну страну или регион.",
   era: "Для public-страницы укажи эпоху.",
   themes: "Для public-страницы укажи хотя бы одну тему.",
+  tone: "Для public-страницы укажи тон публикации.",
 };
 
 async function main() {
@@ -110,6 +111,7 @@ async function main() {
     countries,
     era,
     themes,
+    tone,
   });
 
   const conflictingSlug = manifest.find(
@@ -367,6 +369,7 @@ function buildScenarioQualityReport({
   countries,
   era,
   themes,
+  tone,
 }) {
   const routeIssues = [];
   const publicIssues = [];
@@ -380,17 +383,16 @@ function buildScenarioQualityReport({
   if (title.length < 12) {
     routeIssues.push("title");
   }
-  if (wordCount < 140) {
-    routeIssues.push("narrative");
+  if (wordCount < 180) {
+    publicIssues.push("narrative");
   }
   if (paragraphList.length < 3) {
-    routeIssues.push("paragraphs");
+    publicIssues.push("paragraphs");
   }
-
   if (summary.length < 90) {
     publicIssues.push("summary");
   }
-  if (description.length < 90) {
+  if (description.length < 120) {
     publicIssues.push("description");
   }
   if (!countries.length) {
@@ -401,6 +403,9 @@ function buildScenarioQualityReport({
   }
   if (!themes.length) {
     publicIssues.push("themes");
+  }
+  if (!tone) {
+    publicIssues.push("tone");
   }
 
   return {

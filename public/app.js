@@ -446,6 +446,7 @@ initLanguageSwitcher();
 setLanguage(currentLanguage, { persist: false });
 syncRandomButtonLayout();
 initAnalyticsBindings();
+initScenarioEngagementTracking();
 
 loadProviderMeta();
 if (!PAGE_CONTEXT.disableScenarioHydration) {
@@ -669,6 +670,90 @@ function initAnalyticsBindings() {
       page_kind: getAnalyticsPageKind(),
       language: currentLanguage,
     });
+  });
+}
+
+function initScenarioEngagementTracking() {
+  const shareId = String(PAGE_CONTEXT.scenarioShareId || "").trim();
+  const slug = String(PAGE_CONTEXT.scenarioSlug || "").trim();
+  if (!shareId || PAGE_CONTEXT.kind !== "public-scenario") {
+    return;
+  }
+
+  const state = {
+    pageViewSent: false,
+    engagedSent: false,
+    internalNavigationSent: false,
+    startedAt: Date.now(),
+  };
+
+  const sendEvent = (event) => {
+    const eventId = String(event || "").trim();
+    if (!eventId) return;
+
+    if (eventId === "page_view" && state.pageViewSent) return;
+    if (eventId === "engaged_view" && state.engagedSent) return;
+    if (eventId === "internal_navigation" && state.internalNavigationSent) return;
+
+    if (eventId === "page_view") state.pageViewSent = true;
+    if (eventId === "engaged_view") state.engagedSent = true;
+    if (eventId === "internal_navigation") state.internalNavigationSent = true;
+
+    void fetch("/api/scenario-engagement", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ shareId, slug, event: eventId }),
+      keepalive: true,
+    }).catch(() => {});
+  };
+
+  const maybeSendEngagedView = () => {
+    if (state.engagedSent) return;
+    const elapsedMs = Date.now() - state.startedAt;
+    const maxScrollable = Math.max(
+      1,
+      document.documentElement.scrollHeight - window.innerHeight
+    );
+    const scrollProgress = window.scrollY / maxScrollable;
+    if (elapsedMs >= 20000 || scrollProgress >= 0.65) {
+      sendEvent("engaged_view");
+    }
+  };
+
+  const handleClick = (event) => {
+    const link = event.target instanceof Element ? event.target.closest("a[href]") : null;
+    if (!link) return;
+
+    const href = link.getAttribute("href") || "";
+    if (!href || href.startsWith("#")) return;
+
+    if (
+      href.startsWith("/scenario/") ||
+      href === "/scenarios" ||
+      href.startsWith("/scenarios?")
+    ) {
+      sendEvent("internal_navigation");
+    }
+  };
+
+  sendEvent("page_view");
+
+  const engagedTimerId = window.setTimeout(() => {
+    maybeSendEngagedView();
+  }, 20000);
+
+  const handleVisibilityChange = () => {
+    maybeSendEngagedView();
+  };
+
+  window.addEventListener("scroll", maybeSendEngagedView, { passive: true });
+  document.addEventListener("click", handleClick, true);
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+  window.addEventListener("pagehide", maybeSendEngagedView);
+
+  window.addEventListener("beforeunload", () => {
+    window.clearTimeout(engagedTimerId);
+    maybeSendEngagedView();
   });
 }
 
@@ -2030,10 +2115,9 @@ function buildFallbackShareCard(narrative, timeline, event = "") {
 function buildCardSubtitle(narrative) {
   const text = String(narrative || "").replace(/\s+/g, " ").trim();
   if (!text) return t("fallbackCardSubtitle");
-  const sentence = text.split(/[.!?]/).slice(1).find((part) => part.trim());
+  const sentence = text.split(/[.!?]/).find((part) => part.trim());
   if (!sentence) return t("fallbackCardSubtitle");
-  const trimmed = sentence.trim();
-  return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
+  return sentence.trim();
 }
 
 function parseShareCardFooter(value) {

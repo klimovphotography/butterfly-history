@@ -55,23 +55,9 @@
 - `GEMINI_API_KEY`
 - `GEMINI_MODEL`
 - `GEMINI_BASE_URL`
-- `GROQ_API_KEY`
-- `GROQ_MODEL`
-- `GROQ_BASE_URL`
-- `OPENROUTER_API_KEY`
-- `OPENROUTER_MODEL`
-- `OPENROUTER_BASE_URL`
-- `OPENROUTER_SITE_URL`
-- `OPENROUTER_APP_NAME`
 - `MISTRAL_API_KEY`
 - `MISTRAL_MODEL`
 - `MISTRAL_BASE_URL`
-- `HUGGINGFACE_API_KEY`
-- `HUGGINGFACE_MODEL`
-- `HUGGINGFACE_BASE_URL`
-- `AIPRODUCTIV_API_KEY`
-- `AIPRODUCTIV_MODEL`
-- `AIPRODUCTIV_BASE_URL`
 - `FAILOVER_ORDER`
 - `SITE_URL`
 - `PORT`
@@ -94,15 +80,11 @@ WORMSOFT_BASE_URL=https://ai.wormsoft.ru/api/gpt
 GEMINI_API_KEY=ваш_ключ
 GEMINI_MODEL=gemini-2.5-flash
 
-GROQ_API_KEY=ваш_ключ
-OPENROUTER_API_KEY=ваш_ключ
 MISTRAL_API_KEY=ваш_ключ
-HUGGINGFACE_API_KEY=ваш_ключ
-AIPRODUCTIV_API_KEY=ваш_ключ
 
 # необязательно, но полезно для продакшена
 SITE_URL=https://butterfly-history.ru
-FAILOVER_ORDER=wormsoft-gpt-5.2,gemini-2.5-flash,groq-llama-3.1-70b
+FAILOVER_ORDER=gemini-2.5-flash,mistral-small,wormsoft-gpt-5.2
 
 # папка для живых данных сайта вне git-репозитория
 DATA_DIR=/root/butterfly-runtime
@@ -450,6 +432,34 @@ npm run dev
   - попадает в `sitemap.xml`
   - может индексироваться
 
+### Автоматический отбор без ручной модерации
+
+Теперь сайт умеет сам создавать runtime-публикации для новых генераций.
+
+Логика такая:
+
+1. Пользователь сгенерировал сценарий.
+2. При создании `share-link` сервер автоматически заводит runtime-запись публикации.
+3. Сценарий получает автооценку:
+   - длина текста
+   - количество абзацев
+   - `summary` и `description`
+   - наличие страны/региона, эпохи, темы и тона
+   - рискованные для рекламы темы
+   - похожесть на уже опубликованные public-страницы
+4. Если сценарий сильный, он сразу получает `public`.
+5. Если сценарий сомнительный, слабый или слишком похож на существующий public-материал, он остается `share-only`.
+6. Дальше сайт может менять статус автоматически по поведенческим сигналам:
+   - просмотры страницы
+   - дочитывание / вовлеченный просмотр
+   - переходы дальше по архиву
+
+Важно:
+
+- ручные публикации по-прежнему живут отдельно и имеют приоритет
+- автоархив хранится в runtime, а не в git-файле
+- `share-only`-страницы имеют clean URL, но не продвигаются в индекс
+
 ### Проверка перед публикацией
 
 Ничего не записывает, только показывает, пройдет ли сценарий quality gate:
@@ -481,6 +491,12 @@ npm run publish:scenario -- --share-id FopiMOU --status share-only
   - или `DATA_DIR/share-links.json` на VPS
 - кураторский manifest публикаций:
   - `data/public-scenarios.json`
+- автоматический runtime manifest публикаций:
+  - `.runtime/auto-public-scenarios.json`
+  - или `DATA_DIR/auto-public-scenarios.json` на VPS
+- runtime-метрики автоотбора:
+  - `.runtime/scenario-engagement.json`
+  - или `DATA_DIR/scenario-engagement.json` на VPS
 
 ## События Яндекс.Метрики
 

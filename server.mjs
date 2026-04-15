@@ -20,33 +20,11 @@ const GEMINI_BASE_URL =
   process.env.GEMINI_BASE_URL ||
   "https://generativelanguage.googleapis.com/v1beta/openai";
 
-const GROQ_API_KEY = process.env.GROQ_API_KEY;
-const GROQ_MODEL = process.env.GROQ_MODEL || "llama-3.1-70b-versatile";
-const GROQ_BASE_URL =
-  process.env.GROQ_BASE_URL || "https://api.groq.com/openai/v1";
-
-const OPENROUTER_API_KEY = process.env.OPENROUTER_API_KEY;
-const OPENROUTER_MODEL = process.env.OPENROUTER_MODEL || "google/gemma-2-9b-it";
-const OPENROUTER_BASE_URL =
-  process.env.OPENROUTER_BASE_URL || "https://openrouter.ai/api/v1";
-const OPENROUTER_SITE_URL = process.env.OPENROUTER_SITE_URL || "";
-const OPENROUTER_APP_NAME = process.env.OPENROUTER_APP_NAME || "Butterfly History";
-
 const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 const MISTRAL_MODEL = process.env.MISTRAL_MODEL || "mistral-small-latest";
 const MISTRAL_BASE_URL =
   process.env.MISTRAL_BASE_URL || "https://api.mistral.ai/v1";
 
-const HUGGINGFACE_API_KEY = process.env.HUGGINGFACE_API_KEY;
-const HUGGINGFACE_MODEL =
-  process.env.HUGGINGFACE_MODEL || "meta-llama/Meta-Llama-3-8B-Instruct";
-const HUGGINGFACE_BASE_URL =
-  process.env.HUGGINGFACE_BASE_URL || "https://api-inference.huggingface.co/v1";
-
-const AIPRODUCTIV_API_KEY = process.env.AIPRODUCTIV_API_KEY;
-const AIPRODUCTIV_MODEL = process.env.AIPRODUCTIV_MODEL || "gpt-5.2";
-const AIPRODUCTIV_BASE_URL =
-  process.env.AIPRODUCTIV_BASE_URL || "https://api.aiproductiv.ru/v1";
 const SITE_URL = (process.env.SITE_URL || "").replace(/\/+$/, "");
 
 const FAILOVER_ORDER = (process.env.FAILOVER_ORDER || "")
@@ -76,26 +54,6 @@ const MODEL_CATALOG = [
     enableImages: false,
   },
   {
-    id: "groq-llama-3.1-70b",
-    label: "Groq Llama 3.1 70B",
-    provider: "GROQ",
-    providerLabel: "GROQ",
-    model: GROQ_MODEL,
-    baseUrl: GROQ_BASE_URL,
-    apiKey: GROQ_API_KEY,
-    enableImages: false,
-  },
-  {
-    id: "openrouter-gemma-2-9b",
-    label: "OpenRouter Gemma 2 9B",
-    provider: "OPENROUTER",
-    providerLabel: "OPENROUTER",
-    model: OPENROUTER_MODEL,
-    baseUrl: OPENROUTER_BASE_URL,
-    apiKey: OPENROUTER_API_KEY,
-    enableImages: false,
-  },
-  {
     id: "mistral-small",
     label: "Mistral Small",
     provider: "MISTRAL",
@@ -105,44 +63,16 @@ const MODEL_CATALOG = [
     apiKey: MISTRAL_API_KEY,
     enableImages: false,
   },
-  {
-    id: "huggingface-llama3-8b",
-    label: "Hugging Face Llama 3 8B",
-    provider: "HUGGINGFACE",
-    providerLabel: "HUGGINGFACE",
-    model: HUGGINGFACE_MODEL,
-    baseUrl: HUGGINGFACE_BASE_URL,
-    apiKey: HUGGINGFACE_API_KEY,
-    enableImages: false,
-  },
-  {
-    id: "aiproductiv-gpt-5.2",
-    label: "GPT-5.2",
-    provider: "AIPRODUCTIV",
-    providerLabel: "AIPRODUCTIV",
-    model: AIPRODUCTIV_MODEL,
-    baseUrl: AIPRODUCTIV_BASE_URL,
-    apiKey: AIPRODUCTIV_API_KEY,
-    enableImages: false,
-  },
 ];
 
 const UI_MODEL_IDS = [
   "wormsoft-gpt-5.2",
   "gemini-2.5-flash",
-  "groq-llama-3.1-70b",
-  "openrouter-gemma-2-9b",
   "mistral-small",
-  "huggingface-llama3-8b",
-  "aiproductiv-gpt-5.2",
 ];
 const DEFAULT_FAILOVER_ORDER = [
   "gemini-2.5-flash",
-  "groq-llama-3.1-70b",
-  "openrouter-gemma-2-9b",
   "mistral-small",
-  "huggingface-llama3-8b",
-  "aiproductiv-gpt-5.2",
   "wormsoft-gpt-5.2",
 ];
 const INVALID_ASSISTANT_RESPONSES = new Set([
@@ -221,22 +151,10 @@ function buildModelAttempts(requestedId) {
 }
 
 function buildHeaders(modelConfig) {
-  const headers = {
+  return {
     "Content-Type": "application/json",
     Authorization: `Bearer ${modelConfig.apiKey}`,
   };
-
-  if (modelConfig.provider === "OPENROUTER") {
-    const referer = OPENROUTER_SITE_URL || SITE_URL;
-    if (referer) {
-      headers["HTTP-Referer"] = referer;
-    }
-    if (OPENROUTER_APP_NAME) {
-      headers["X-Title"] = OPENROUTER_APP_NAME;
-    }
-  }
-
-  return headers;
 }
 
 function pickModelConfig(requestedId) {
@@ -258,8 +176,7 @@ function missingModelMessage(model) {
   if (!model) {
     return (
       "Не найден API ключ. Добавьте хотя бы один из ключей: " +
-      "WORMSOFT_API_KEY, GEMINI_API_KEY, GROQ_API_KEY, OPENROUTER_API_KEY, " +
-      "MISTRAL_API_KEY, HUGGINGFACE_API_KEY или AIPRODUCTIV_API_KEY в .env " +
+      "WORMSOFT_API_KEY, GEMINI_API_KEY или MISTRAL_API_KEY в .env " +
       "и перезапустите сервер."
     );
   }
@@ -275,6 +192,23 @@ const RUNTIME_DATA_DIR = resolveRuntimeDataDir();
 const LEGACY_SHARE_LINKS_FILE = path.join(REPO_DATA_DIR, "share-links.json");
 const SHARE_LINKS_FILE = path.join(RUNTIME_DATA_DIR, "share-links.json");
 const PUBLIC_SCENARIOS_FILE = resolvePublicScenariosFile();
+const AUTO_PUBLIC_SCENARIOS_FILE = resolveAutoPublicScenariosFile();
+const SCENARIO_ENGAGEMENT_FILE = resolveScenarioEngagementFile();
+const AUTO_REVIEW_VERSION = 1;
+const AUTO_MIN_PUBLIC_WORDS = 180;
+const AUTO_MIN_PUBLIC_PARAGRAPHS = 3;
+const AUTO_MIN_SUMMARY_LENGTH = 90;
+const AUTO_MIN_DESCRIPTION_LENGTH = 120;
+const AUTO_PUBLIC_SCORE_THRESHOLD = 80;
+const AUTO_PROMOTION_SCORE_THRESHOLD = 60;
+const AUTO_PROMOTION_MIN_PAGE_VIEWS = 8;
+const AUTO_PROMOTION_MIN_ENGAGED_VIEWS = 2;
+const AUTO_PROMOTION_MIN_INTERNAL_NAVIGATION = 1;
+const AUTO_PROMOTION_MIN_UNIQUE_VIEW_DAYS = 2;
+const AUTO_DEMOTION_REVIEW_DAYS = 7;
+const AUTO_DEMOTION_MIN_PAGE_VIEWS = 3;
+const AUTO_DEMOTION_MIN_ENGAGED_VIEWS = 1;
+const AUTO_DEMOTION_MIN_INTERNAL_NAVIGATION = 1;
 
 const server = http.createServer(async (req, res) => {
   try {
@@ -304,6 +238,10 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" && url.pathname === "/api/share-link") {
       await handleCreateShareLink(req, res);
+      return;
+    }
+    if (req.method === "POST" && url.pathname === "/api/scenario-engagement") {
+      await handleScenarioEngagement(req, res);
       return;
     }
     if (req.method === "GET" && url.pathname.startsWith("/api/share-link/")) {
@@ -445,18 +383,74 @@ async function handleCreateShareLink(req, res) {
   const store = await readShareLinks();
   const existingId = findExistingShareId(store, scenario);
   const id = existingId || generateShortShareId(store);
+  const createdAt = existingId
+    ? String(store[id]?.createdAt || "").trim() || new Date().toISOString()
+    : new Date().toISOString();
 
   if (!existingId) {
     store[id] = {
       scenario,
-      createdAt: new Date().toISOString(),
+      createdAt,
     };
     await writeShareLinks(store);
+  }
+
+  try {
+    await syncAutomaticScenarioManifestEntry({
+      shareId: id,
+      scenario,
+      createdAt,
+    });
+  } catch (error) {
+    console.error("Automatic publication sync failed:", error);
   }
 
   sendJson(res, 200, {
     id,
     url: `${getSiteUrl(req)}/?s=${encodeURIComponent(id)}`,
+  });
+}
+
+async function handleScenarioEngagement(req, res) {
+  const body = await readJsonBody(req);
+  const shareId = normalizeShortId(body?.shareId);
+  const event = normalizeScenarioEngagementEvent(body?.event);
+  const slug = oneLine(body?.slug || "");
+
+  if (!shareId || !event) {
+    sendJson(res, 400, { error: "Некорректные данные поведенческого сигнала." });
+    return;
+  }
+
+  const library = await loadPublicScenarioLibrary();
+  const scenario = library.byShareId.get(shareId);
+  if (!scenario) {
+    sendJson(res, 404, { error: "Сценарий для сигнала не найден." });
+    return;
+  }
+
+  if (slug && slug !== scenario.slug) {
+    sendJson(res, 400, { error: "Slug не совпадает с сохраненным сценарием." });
+    return;
+  }
+
+  const metricsStore = await readScenarioEngagementStore();
+  metricsStore[shareId] = updateScenarioEngagementMetrics(metricsStore[shareId], event);
+  await writeScenarioEngagementStore(metricsStore);
+
+  try {
+    await syncAutomaticScenarioManifestEntry({
+      shareId,
+      scenario: scenario.encodedScenario,
+      createdAt: scenario.createdAt,
+    });
+  } catch (error) {
+    console.error("Automatic review refresh failed:", error);
+  }
+
+  sendJson(res, 200, {
+    ok: true,
+    metrics: summarizeScenarioEngagementMetrics(metricsStore[shareId]),
   });
 }
 
@@ -1250,7 +1244,7 @@ function buildCardSubtitle(narrative, language) {
     );
   }
   const trimmed = sentence.trim();
-  return trimmed.length > 110 ? `${trimmed.slice(0, 107)}…` : trimmed;
+  return trimmed;
 }
 
 function pickString(value) {
@@ -1422,6 +1416,8 @@ async function servePublicScenarioHtml(url, res, method = "GET", siteUrl = "http
         allowClientTitle: false,
         disableScenarioHydration: true,
         scenarioSlug: scenario.slug,
+        scenarioShareId: scenario.shareId,
+        publicationStatus: scenario.status,
       },
       meta: buildPublicScenarioPageMeta(scenario, siteUrl),
     });
@@ -1587,27 +1583,68 @@ function buildScenarioMeta(scenarioParam, siteUrl) {
   };
 }
 
+async function readManualPublicScenarioManifest() {
+  return readJsonArrayFile(PUBLIC_SCENARIOS_FILE);
+}
+
+async function readAutoPublicScenarioManifest() {
+  return readJsonArrayFile(AUTO_PUBLIC_SCENARIOS_FILE);
+}
+
+async function writeAutoPublicScenarioManifest(manifest) {
+  await writeJsonFileAtomic(AUTO_PUBLIC_SCENARIOS_FILE, Array.isArray(manifest) ? manifest : []);
+}
+
 async function readPublicScenarioManifest() {
-  try {
-    const raw = await fsp.readFile(PUBLIC_SCENARIOS_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch (error) {
-    if (error?.code === "ENOENT") {
-      return [];
-    }
-    throw error;
+  const [manualManifest, autoManifest] = await Promise.all([
+    readManualPublicScenarioManifest(),
+    readAutoPublicScenarioManifest(),
+  ]);
+  return mergePublicScenarioManifests(manualManifest, autoManifest);
+}
+
+function mergePublicScenarioManifests(manualManifest, autoManifest) {
+  const merged = [];
+  const seenShareIds = new Set();
+  const seenSlugs = new Set();
+
+  for (const entry of manualManifest || []) {
+    if (!entry || typeof entry !== "object") continue;
+    const shareId = String(entry.shareId || "").trim();
+    const slug = String(entry.slug || "").trim();
+    if (shareId) seenShareIds.add(shareId);
+    if (slug) seenSlugs.add(slug);
+    merged.push({ ...entry, publicationSource: "manual" });
   }
+
+  for (const entry of autoManifest || []) {
+    if (!entry || typeof entry !== "object") continue;
+    const shareId = String(entry.shareId || "").trim();
+    const slug = String(entry.slug || "").trim();
+    if ((shareId && seenShareIds.has(shareId)) || (slug && seenSlugs.has(slug))) {
+      continue;
+    }
+    if (shareId) seenShareIds.add(shareId);
+    if (slug) seenSlugs.add(slug);
+    merged.push({ ...entry, publicationSource: "auto" });
+  }
+
+  return merged;
 }
 
 async function loadPublicScenarioLibrary() {
-  const [manifest, shareStore] = await Promise.all([
+  const [manifest, shareStore, engagementStore] = await Promise.all([
     readPublicScenarioManifest(),
     readShareLinks(),
+    readScenarioEngagementStore(),
   ]);
 
   const normalizedScenarios = manifest
-    .map((entry) => normalizePublicScenarioRecord(entry, shareStore[entry?.shareId]))
+    .map((entry) => normalizePublicScenarioRecord(
+      entry,
+      shareStore[entry?.shareId],
+      engagementStore[entry?.shareId]
+    ))
     .filter(Boolean)
     .sort(compareByPublishedDesc);
   const routableScenarios = normalizedScenarios.filter(
@@ -1640,7 +1677,7 @@ async function loadPublicScenarioLibrary() {
   };
 }
 
-function normalizePublicScenarioRecord(entry, storeEntry) {
+function normalizePublicScenarioRecord(entry, storeEntry, engagementEntry) {
   if (!entry || typeof entry !== "object" || !storeEntry?.scenario) {
     return null;
   }
@@ -1652,6 +1689,7 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
   }
 
   const requestedStatus = normalizePublicationStatus(entry.status || "draft");
+  const shareId = String(entry.shareId || "").trim();
   const lang = normalizeLanguage(entry.lang || parsed.lang || parsed.language);
   const slug = String(entry.slug || "").trim();
   const title = oneLine(entry.title || parsed.event || parsed.title || "");
@@ -1662,17 +1700,18 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     220
   );
   const description = truncate(
-    entry.description || summary || firstSentence(narrative),
+    entry.description || buildScenarioDescription(summary, narrative),
     180
   );
-  const publishedAt = normalizeIsoDate(entry.publishedAt || storeEntry.createdAt);
   const createdAt = normalizeIsoDate(storeEntry.createdAt);
+  const publishedAt = normalizeIsoDate(entry.publishedAt || storeEntry.createdAt);
   const countries = normalizeTagList(entry.countries);
   const themes = normalizeTagList(entry.themes);
   const tone = oneLine(entry.tone || getModeLabelForLang(parsed.mode, lang));
   const era = oneLine(entry.era || "");
   const wordCount = countWords(narrative);
   const paragraphs = splitNarrativeIntoParagraphs(narrative);
+  const engagement = normalizeScenarioEngagementMetrics(engagementEntry);
   const quality = buildScenarioQualityReport({
     slug,
     title,
@@ -1683,19 +1722,35 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     countries,
     era,
     themes,
+    tone,
   });
-  const status = resolveEffectivePublicationStatus(requestedStatus, quality);
+  const autoReview = normalizeAutoReview(entry.autoReview);
+  const autoManaged = Boolean(entry.autoManaged) || entry.publicationSource === "auto";
+  const status = autoManaged
+    ? resolveAutomaticScenarioStatus({
+      requestedStatus,
+      quality,
+      autoReview,
+      engagement,
+      publishedAt,
+      createdAt,
+    })
+    : resolveEffectivePublicationStatus(requestedStatus, quality);
+  const popularity = autoManaged
+    ? resolveAutomaticPopularity(entry.popularity, autoReview, engagement)
+    : Number(entry.popularity || 0);
+  const updatedAt = normalizeIsoDate(entry.updatedAt || entry.autoReview?.updatedAt || publishedAt || createdAt);
 
   return {
     slug,
-    shareId: String(entry.shareId || "").trim(),
+    shareId,
     requestedStatus,
     status,
-    featured: Boolean(entry.featured),
-    popularity: Number(entry.popularity || 0),
+    featured: autoManaged ? false : Boolean(entry.featured),
+    popularity,
     publishedAt,
     createdAt,
-    updatedAt: publishedAt || createdAt,
+    updatedAt: updatedAt || publishedAt || createdAt,
     lang,
     title,
     subtitle,
@@ -1715,6 +1770,9 @@ function normalizePublicScenarioRecord(entry, storeEntry) {
     wordCount,
     readingMinutes: Math.max(1, Math.round(wordCount / 170) || 1),
     quality,
+    autoManaged,
+    autoReview,
+    engagement,
   };
 }
 
@@ -2430,6 +2488,7 @@ function buildScenarioQualityReport({
   countries,
   era,
   themes,
+  tone,
 }) {
   const routeIssues = [];
   const publicIssues = [];
@@ -2443,17 +2502,17 @@ function buildScenarioQualityReport({
   if (title.length < 12) {
     routeIssues.push("title");
   }
-  if (wordCount < 140) {
-    routeIssues.push("narrative");
-  }
-  if (paragraphList.length < 3) {
-    routeIssues.push("paragraphs");
-  }
 
-  if (summary.length < 90) {
+  if (wordCount < AUTO_MIN_PUBLIC_WORDS) {
+    publicIssues.push("narrative");
+  }
+  if (paragraphList.length < AUTO_MIN_PUBLIC_PARAGRAPHS) {
+    publicIssues.push("paragraphs");
+  }
+  if (summary.length < AUTO_MIN_SUMMARY_LENGTH) {
     publicIssues.push("summary");
   }
-  if (description.length < 90) {
+  if (description.length < AUTO_MIN_DESCRIPTION_LENGTH) {
     publicIssues.push("description");
   }
   if (!countries.length) {
@@ -2464,6 +2523,9 @@ function buildScenarioQualityReport({
   }
   if (!themes.length) {
     publicIssues.push("themes");
+  }
+  if (!tone) {
+    publicIssues.push("tone");
   }
 
   return {
@@ -2556,6 +2618,759 @@ function resolveEffectivePublicationStatus(requestedStatus, quality) {
   return "draft";
 }
 
+function normalizeAutoReview(value) {
+  const review = value && typeof value === "object" ? value : {};
+  return {
+    version: Number(review.version || AUTO_REVIEW_VERSION) || AUTO_REVIEW_VERSION,
+    score: clampNumber(review.score, 0, 100),
+    blockers: normalizeTagList(review.blockers),
+    riskFlags: normalizeTagList(review.riskFlags),
+    duplicateOfSlug: oneLine(review.duplicateOfSlug || ""),
+    lowIntent: Boolean(review.lowIntent),
+    updatedAt: normalizeIsoTimestamp(review.updatedAt),
+  };
+}
+
+function resolveAutomaticScenarioStatus({
+  requestedStatus,
+  quality,
+  autoReview,
+  engagement,
+  publishedAt,
+  createdAt,
+}) {
+  if (!quality.isRoutable) {
+    return "draft";
+  }
+
+  const blockers = Array.isArray(autoReview?.blockers) ? autoReview.blockers : [];
+  const hasHardBlockers = blockers.length > 0 || Boolean(autoReview?.lowIntent);
+  if (hasHardBlockers) {
+    return "share-only";
+  }
+
+  let status = resolveEffectivePublicationStatus(requestedStatus, quality);
+  if (status === "draft") {
+    status = "share-only";
+  }
+
+  if (quality.isPublicReady && Number(autoReview?.score || 0) >= AUTO_PUBLIC_SCORE_THRESHOLD) {
+    status = "public";
+  } else if (quality.isRoutable) {
+    status = "share-only";
+  }
+
+  if (
+    quality.isPublicReady &&
+    Number(autoReview?.score || 0) >= AUTO_PROMOTION_SCORE_THRESHOLD &&
+    canAutoPromoteScenario(engagement)
+  ) {
+    status = "public";
+  }
+
+  if (
+    status === "public" &&
+    shouldAutoDemoteScenario({
+      engagement,
+      publishedAt,
+      createdAt,
+    })
+  ) {
+    status = "share-only";
+  }
+
+  return status;
+}
+
+function canAutoPromoteScenario(engagement) {
+  const metrics = normalizeScenarioEngagementMetrics(engagement);
+  return (
+    metrics.pageViews >= AUTO_PROMOTION_MIN_PAGE_VIEWS &&
+    metrics.engagedViews >= AUTO_PROMOTION_MIN_ENGAGED_VIEWS &&
+    metrics.internalNavigation >= AUTO_PROMOTION_MIN_INTERNAL_NAVIGATION &&
+    metrics.uniqueViewDays.length >= AUTO_PROMOTION_MIN_UNIQUE_VIEW_DAYS
+  );
+}
+
+function shouldAutoDemoteScenario({ engagement, publishedAt, createdAt }) {
+  const metrics = normalizeScenarioEngagementMetrics(engagement);
+  const referenceDate = publishedAt || createdAt;
+  if (!referenceDate) {
+    return false;
+  }
+
+  const ageDays = getAgeInDays(referenceDate);
+  if (ageDays < AUTO_DEMOTION_REVIEW_DAYS) {
+    return false;
+  }
+
+  return (
+    metrics.pageViews < AUTO_DEMOTION_MIN_PAGE_VIEWS ||
+    metrics.engagedViews < AUTO_DEMOTION_MIN_ENGAGED_VIEWS ||
+    metrics.internalNavigation < AUTO_DEMOTION_MIN_INTERNAL_NAVIGATION
+  );
+}
+
+function resolveAutomaticPopularity(value, autoReview, engagement) {
+  const base = Number(value);
+  if (Number.isFinite(base) && base > 0) {
+    return clampNumber(base, 0, 100);
+  }
+
+  const metrics = normalizeScenarioEngagementMetrics(engagement);
+  const computed =
+    Number(autoReview?.score || 0) +
+    Math.min(metrics.pageViews, 12) +
+    Math.min(metrics.engagedViews * 5, 20) +
+    Math.min(metrics.internalNavigation * 7, 21);
+  return clampNumber(Math.round(computed), 0, 100);
+}
+
+function normalizeScenarioEngagementEvent(value) {
+  const raw = String(value || "").trim().toLowerCase();
+  if (raw === "page_view") return "page_view";
+  if (raw === "engaged_view") return "engaged_view";
+  if (raw === "internal_navigation") return "internal_navigation";
+  return "";
+}
+
+function normalizeScenarioEngagementMetrics(value) {
+  const metrics = value && typeof value === "object" ? value : {};
+  return {
+    pageViews: Math.max(0, Number(metrics.pageViews || 0) || 0),
+    engagedViews: Math.max(0, Number(metrics.engagedViews || 0) || 0),
+    internalNavigation: Math.max(0, Number(metrics.internalNavigation || 0) || 0),
+    uniqueViewDays: normalizeDayKeyList(metrics.uniqueViewDays),
+    lastPageViewAt: normalizeIsoTimestamp(metrics.lastPageViewAt),
+    lastEngagedAt: normalizeIsoTimestamp(metrics.lastEngagedAt),
+    lastInternalNavigationAt: normalizeIsoTimestamp(metrics.lastInternalNavigationAt),
+  };
+}
+
+function summarizeScenarioEngagementMetrics(value) {
+  const metrics = normalizeScenarioEngagementMetrics(value);
+  return {
+    pageViews: metrics.pageViews,
+    engagedViews: metrics.engagedViews,
+    internalNavigation: metrics.internalNavigation,
+    uniqueViewDays: metrics.uniqueViewDays.length,
+    lastPageViewAt: metrics.lastPageViewAt,
+    lastEngagedAt: metrics.lastEngagedAt,
+    lastInternalNavigationAt: metrics.lastInternalNavigationAt,
+  };
+}
+
+function updateScenarioEngagementMetrics(value, event, now = new Date()) {
+  const metrics = normalizeScenarioEngagementMetrics(value);
+  const timestamp = now instanceof Date ? now.toISOString() : normalizeIsoTimestamp(now);
+  const dayKey = timestamp.slice(0, 10);
+
+  if (event === "page_view") {
+    metrics.pageViews += 1;
+    metrics.lastPageViewAt = timestamp;
+    metrics.uniqueViewDays = appendDayKey(metrics.uniqueViewDays, dayKey);
+  }
+  if (event === "engaged_view") {
+    metrics.engagedViews += 1;
+    metrics.lastEngagedAt = timestamp;
+    metrics.uniqueViewDays = appendDayKey(metrics.uniqueViewDays, dayKey);
+  }
+  if (event === "internal_navigation") {
+    metrics.internalNavigation += 1;
+    metrics.lastInternalNavigationAt = timestamp;
+  }
+
+  return metrics;
+}
+
+async function syncAutomaticScenarioManifestEntry({ shareId, scenario, createdAt }) {
+  const parsed = decodeScenarioPayload(scenario);
+  if (!parsed || !shareId) {
+    return null;
+  }
+
+  const [autoManifest, engagementStore, library] = await Promise.all([
+    readAutoPublicScenarioManifest(),
+    readScenarioEngagementStore(),
+    loadPublicScenarioLibrary(),
+  ]);
+
+  if (library.allScenarios.some((entry) => entry.shareId === shareId && !entry.autoManaged)) {
+    return null;
+  }
+
+  const existingEntry = (autoManifest || []).find(
+    (entry) => String(entry?.shareId || "").trim() === shareId
+  ) || null;
+  const nextEntry = buildAutomaticScenarioManifestEntry({
+    shareId,
+    parsed,
+    createdAt,
+    existingEntry,
+    engagement: engagementStore[shareId],
+    existingScenarios: library.allScenarios,
+  });
+
+  if (!nextEntry) {
+    return null;
+  }
+
+  const nextManifest = upsertAutomaticManifestEntry(autoManifest, nextEntry);
+  await writeAutoPublicScenarioManifest(nextManifest);
+  return nextEntry;
+}
+
+function buildAutomaticScenarioManifestEntry({
+  shareId,
+  parsed,
+  createdAt,
+  existingEntry,
+  engagement,
+  existingScenarios,
+}) {
+  const lang = normalizeLanguage(parsed.lang || parsed.language);
+  const title = oneLine(parsed.event || parsed.title || "");
+  const subtitle = oneLine(
+    parsed.subtitle || parsed.shareCard?.subtitle || parsed.share_card?.subtitle || ""
+  );
+  const narrative = oneLine(parsed.narrative || "");
+  const summary = truncate(subtitle || firstSentence(narrative), 220);
+  const description = truncate(buildScenarioDescription(summary, narrative), 180);
+  const contentText = [title, subtitle, narrative].filter(Boolean).join(" ");
+  const countries = detectScenarioCountries(contentText, lang);
+  const themes = detectScenarioThemes(contentText, lang);
+  const era = detectScenarioEra(contentText, lang);
+  const tone = getModeLabelForLang(parsed.mode, lang);
+  const slug = ensureUniqueScenarioSlug(
+    slugify(title || firstSentence(narrative) || `scenario-${shareId.toLowerCase()}`),
+    existingScenarios,
+    shareId
+  );
+  const paragraphs = splitNarrativeIntoParagraphs(narrative);
+  const quality = buildScenarioQualityReport({
+    slug,
+    title,
+    summary,
+    description,
+    narrative,
+    paragraphs,
+    countries,
+    era,
+    themes,
+    tone,
+  });
+  const duplicate = findDuplicatePublicScenario(existingScenarios, {
+    shareId,
+    title,
+    summary,
+    narrative,
+    lang,
+  });
+  const riskFlags = detectScenarioAdRiskFlags({ title, subtitle, narrative });
+  const lowIntent = hasLowIntentScenario({ title, subtitle, narrative });
+  const score = calculateAutomaticScenarioScore({
+    quality,
+    title,
+    summary,
+    description,
+    countries,
+    themes,
+    era,
+    tone,
+    riskFlags,
+    lowIntent,
+    engagement,
+  });
+  const blockers = [];
+  if (duplicate) blockers.push("duplicate");
+  if (riskFlags.length) blockers.push("ad-risk");
+  if (lowIntent) blockers.push("low-intent");
+
+  const desiredStatus = decideAutomaticPublicationStatus({
+    quality,
+    score,
+    blockers,
+    engagement,
+    existingPublishedAt: existingEntry?.publishedAt,
+    createdAt,
+  });
+  const publishedAt = desiredStatus === "public"
+    ? normalizeIsoDate(existingEntry?.publishedAt || new Date())
+    : normalizeIsoDate(existingEntry?.publishedAt || createdAt);
+
+  return cleanupAutomaticManifestEntry({
+    shareId,
+    slug,
+    status: desiredStatus,
+    autoManaged: true,
+    publishedAt,
+    updatedAt: normalizeIsoDate(new Date()),
+    popularity: resolveAutomaticPopularity(existingEntry?.popularity, { score }, engagement),
+    summary,
+    description,
+    countries,
+    era,
+    themes,
+    tone,
+    title,
+    subtitle,
+    relatedSlugs: normalizeTagList(existingEntry?.relatedSlugs),
+    ...(lang === "en" ? { lang } : {}),
+    autoReview: {
+      version: AUTO_REVIEW_VERSION,
+      score,
+      blockers,
+      riskFlags,
+      duplicateOfSlug: duplicate?.slug || "",
+      lowIntent,
+      updatedAt: new Date().toISOString(),
+      engagement: summarizeScenarioEngagementMetrics(engagement),
+    },
+  });
+}
+
+function upsertAutomaticManifestEntry(manifest, nextEntry) {
+  const list = Array.isArray(manifest) ? [...manifest] : [];
+  const index = list.findIndex((entry) => String(entry?.shareId || "").trim() === nextEntry.shareId);
+  if (index >= 0) {
+    list[index] = nextEntry;
+  } else {
+    list.push(nextEntry);
+  }
+  return list;
+}
+
+function decideAutomaticPublicationStatus({
+  quality,
+  score,
+  blockers,
+  engagement,
+  existingPublishedAt,
+  createdAt,
+}) {
+  if (!quality.isRoutable) {
+    return "draft";
+  }
+
+  if (blockers.length > 0) {
+    return "share-only";
+  }
+
+  if (quality.isPublicReady && score >= AUTO_PUBLIC_SCORE_THRESHOLD) {
+    return shouldAutoDemoteScenario({
+      engagement,
+      publishedAt: existingPublishedAt,
+      createdAt,
+    })
+      ? "share-only"
+      : "public";
+  }
+
+  if (
+    quality.isPublicReady &&
+    score >= AUTO_PROMOTION_SCORE_THRESHOLD &&
+    canAutoPromoteScenario(engagement)
+  ) {
+    return "public";
+  }
+
+  return "share-only";
+}
+
+function calculateAutomaticScenarioScore({
+  quality,
+  title,
+  summary,
+  description,
+  countries,
+  themes,
+  era,
+  tone,
+  riskFlags,
+  lowIntent,
+  engagement,
+}) {
+  let score = 0;
+  const metrics = normalizeScenarioEngagementMetrics(engagement);
+
+  if (quality.wordCount >= AUTO_MIN_PUBLIC_WORDS) score += 18;
+  if (quality.wordCount >= 260) score += 8;
+  if (quality.wordCount >= 360) score += 4;
+  if (quality.paragraphCount >= AUTO_MIN_PUBLIC_PARAGRAPHS) score += 10;
+  if (quality.paragraphCount >= 4) score += 4;
+  if (title.length >= 12) score += 8;
+  if (title.length >= 28) score += 4;
+  if (summary.length >= AUTO_MIN_SUMMARY_LENGTH) score += 10;
+  if (summary.length >= 140) score += 4;
+  if (description.length >= AUTO_MIN_DESCRIPTION_LENGTH) score += 10;
+  if (countries.length > 0) score += 8;
+  if (themes.length > 0) score += 8;
+  if (era) score += 6;
+  if (tone) score += 4;
+  if (quality.isPublicReady) score += 6;
+  if (!lowIntent) score += 4;
+  if (!riskFlags.length) score += 6;
+  if (metrics.pageViews >= AUTO_PROMOTION_MIN_PAGE_VIEWS) score += 4;
+  if (metrics.engagedViews >= AUTO_PROMOTION_MIN_ENGAGED_VIEWS) score += 4;
+  if (metrics.internalNavigation >= AUTO_PROMOTION_MIN_INTERNAL_NAVIGATION) score += 2;
+  return clampNumber(score, 0, 100);
+}
+
+function detectScenarioCountries(text, lang) {
+  const rules = [
+    { label: lang === "en" ? "Russia" : "Россия", patterns: [/росси/i, /\brussia\b/i, /\bussr\b/i, /ссср/i, /совет/i] },
+    { label: lang === "en" ? "USA" : "США", patterns: [/\bсша\b/i, /\busa\b/i, /united states/i, /америк/i, /\bamerica\b/i] },
+    { label: lang === "en" ? "Europe" : "Европа", patterns: [/европ/i, /\beurope\b/i] },
+    { label: lang === "en" ? "China" : "Китай", patterns: [/кита/i, /\bchina\b/i] },
+    { label: lang === "en" ? "Japan" : "Япония", patterns: [/япони/i, /\bjapan\b/i] },
+    { label: lang === "en" ? "Germany" : "Германия", patterns: [/герман/i, /немец/i, /\bgermany\b/i] },
+    { label: lang === "en" ? "Britain" : "Британия", patterns: [/британ/i, /англи/i, /united kingdom/i, /\buk\b/i, /\bbritain\b/i] },
+    { label: lang === "en" ? "France" : "Франция", patterns: [/франци/i, /\bfrance\b/i] },
+    { label: lang === "en" ? "Middle East" : "Ближний Восток", patterns: [/ближн.*восток/i, /middle east/i] },
+    { label: lang === "en" ? "Mediterranean" : "Средиземноморье", patterns: [/средизем/i, /mediterranean/i] },
+    { label: lang === "en" ? "Rus" : "Русь", patterns: [/\bрусь\b/i, /русск.*княжеств/i] },
+    { label: lang === "en" ? "World" : "Мир", patterns: [/\bмир\b/i, /планет/i, /человечеств/i, /\bworld\b/i, /\bplanet\b/i, /\bearth\b/i, /humanity/i] },
+  ];
+
+  return detectTopRuleLabels(text, rules, 2, lang === "en" ? ["World"] : ["Мир"]);
+}
+
+function detectScenarioThemes(text, lang) {
+  const rules = [
+    { label: lang === "en" ? "Geopolitics" : "геополитика", patterns: [/геополит/i, /сверхдержав/i, /allianc/i, /геостратег/i, /sphere of influence/i] },
+    { label: lang === "en" ? "Politics" : "политика", patterns: [/политик/i, /выбор/i, /революц/i, /власт/i, /election/i, /government/i, /president/i] },
+    { label: lang === "en" ? "Wars" : "войны", patterns: [/войн/i, /армия/i, /вторжен/i, /front/i, /army/i, /battle/i] },
+    { label: lang === "en" ? "Religion" : "религия", patterns: [/религи/i, /христиан/i, /ислам/i, /церков/i, /faith/i, /church/i, /christian/i] },
+    { label: lang === "en" ? "Science" : "наука", patterns: [/наук/i, /учен/i, /гравитац/i, /телепат/i, /physics/i, /scient/i, /telepath/i] },
+    { label: lang === "en" ? "Technology" : "технологии", patterns: [/технолог/i, /\bии\b/i, /интернет/i, /сеть/i, /ai\b/i, /network/i, /computer/i] },
+    { label: lang === "en" ? "Catastrophes" : "катастрофы", patterns: [/катастроф/i, /метеорит/i, /ядерн/i, /эпидем/i, /zombi/i, /disaster/i, /nuclear/i] },
+    { label: lang === "en" ? "Evolution" : "эволюция", patterns: [/эволюц/i, /динозав/i, /неандертал/i, /prehistor/i, /species/i, /evolution/i] },
+    { label: lang === "en" ? "Biology" : "биология", patterns: [/биолог/i, /мутац/i, /генет/i, /virus/i, /mutation/i, /genetic/i] },
+    { label: lang === "en" ? "Civilizations" : "цивилизации", patterns: [/цивилизац/i, /импер/i, /римск/i, /roman/i, /empire/i] },
+    { label: lang === "en" ? "Conspiracy" : "конспирология", patterns: [/конспир/i, /тайн.*правительств/i, /золот[ао]й миллиард/i, /conspiracy/i, /secret government/i] },
+    { label: lang === "en" ? "Culture" : "культура", patterns: [/музык/i, /певец/i, /худож/i, /культур/i, /music/i, /artist/i, /cinema/i] },
+  ];
+
+  return detectTopRuleLabels(text, rules, 3, []);
+}
+
+function detectTopRuleLabels(text, rules, limit, fallback) {
+  const normalized = oneLine(text).toLowerCase();
+  const matches = rules
+    .map((rule) => ({
+      label: rule.label,
+      score: countPatternHits(normalized, rule.patterns),
+    }))
+    .filter((entry) => entry.score > 0)
+    .sort((left, right) => right.score - left.score || left.label.localeCompare(right.label, "ru"))
+    .slice(0, limit)
+    .map((entry) => entry.label);
+
+  if (matches.length > 0) {
+    return matches;
+  }
+  return Array.isArray(fallback) ? fallback.filter(Boolean) : [];
+}
+
+function countPatternHits(text, patterns) {
+  return (patterns || []).reduce((score, pattern) => score + Number(pattern.test(text)), 0);
+}
+
+function detectScenarioEra(text, lang) {
+  const normalized = oneLine(text).toLowerCase();
+
+  if (/динозав|неандертал|доистор|prehistor|evolution/i.test(normalized)) {
+    return lang === "en" ? "Prehistoric Era" : "Доисторическая эпоха";
+  }
+  if (/средневек|medieval|монгол|mongol|княж/i.test(normalized)) {
+    return lang === "en" ? "Middle Ages" : "Средние века";
+  }
+  if (/антич|рим|roman|greece|египет/i.test(normalized)) {
+    return lang === "en" ? "Ancient Era" : "Античность";
+  }
+
+  const explicitCentury = normalized.match(/\b([ivxlcdm]{1,6}|[0-9]{1,2})\s*век\b/i);
+  if (explicitCentury?.[1]) {
+    return normalizeCenturyLabel(explicitCentury[1], lang);
+  }
+
+  const years = Array.from(normalized.matchAll(/\b(0?[1-9][0-9]{2,3}|20[0-9]{2})\b/g))
+    .map((entry) => Number(entry[1]))
+    .filter((year) => year >= 1 && year <= 2099);
+  if (years.length > 0) {
+    return formatCenturyFromYear(years[0], lang);
+  }
+
+  if (/соврем|internet|интернет|ии|ai\b|телепат|telepath|covid|zombi/i.test(normalized)) {
+    return lang === "en" ? "21st century" : "XXI век";
+  }
+
+  return lang === "en" ? "21st century" : "XXI век";
+}
+
+function normalizeCenturyLabel(rawValue, lang) {
+  const raw = String(rawValue || "").trim();
+  if (!raw) {
+    return lang === "en" ? "21st century" : "XXI век";
+  }
+
+  if (/^[0-9]+$/.test(raw)) {
+    const number = Number(raw);
+    if (!Number.isFinite(number) || number < 1) {
+      return lang === "en" ? "21st century" : "XXI век";
+    }
+    return lang === "en" ? `${ordinalCentury(number)} century` : `${toRoman(number)} век`;
+  }
+
+  return lang === "en"
+    ? `${raw.toUpperCase()} century`
+    : `${raw.toUpperCase()} век`;
+}
+
+function formatCenturyFromYear(year, lang) {
+  const century = Math.max(1, Math.ceil(Number(year) / 100));
+  return lang === "en" ? `${ordinalCentury(century)} century` : `${toRoman(century)} век`;
+}
+
+function ordinalCentury(value) {
+  const number = Math.max(1, Number(value) || 1);
+  const tens = number % 100;
+  if (tens >= 11 && tens <= 13) return `${number}th`;
+  const unit = number % 10;
+  if (unit === 1) return `${number}st`;
+  if (unit === 2) return `${number}nd`;
+  if (unit === 3) return `${number}rd`;
+  return `${number}th`;
+}
+
+function toRoman(value) {
+  const number = Math.max(1, Number(value) || 1);
+  const rules = [
+    ["M", 1000],
+    ["CM", 900],
+    ["D", 500],
+    ["CD", 400],
+    ["C", 100],
+    ["XC", 90],
+    ["L", 50],
+    ["XL", 40],
+    ["X", 10],
+    ["IX", 9],
+    ["V", 5],
+    ["IV", 4],
+    ["I", 1],
+  ];
+  let remainder = number;
+  let result = "";
+  for (const [label, amount] of rules) {
+    while (remainder >= amount) {
+      result += label;
+      remainder -= amount;
+    }
+  }
+  return result || "I";
+}
+
+function ensureUniqueScenarioSlug(baseSlug, scenarios, shareId) {
+  const normalizedBase = slugify(baseSlug) || `scenario-${String(shareId || "").toLowerCase()}`;
+  const occupied = new Set(
+    (scenarios || [])
+      .filter((entry) => entry?.shareId !== shareId)
+      .map((entry) => String(entry?.slug || "").trim())
+      .filter(Boolean)
+  );
+
+  if (!occupied.has(normalizedBase)) {
+    return normalizedBase;
+  }
+
+  let suffix = 2;
+  let nextSlug = `${normalizedBase}-${suffix}`;
+  while (occupied.has(nextSlug)) {
+    suffix += 1;
+    nextSlug = `${normalizedBase}-${suffix}`;
+  }
+  return nextSlug;
+}
+
+function findDuplicatePublicScenario(existingScenarios, candidate) {
+  const publicScenarios = (existingScenarios || []).filter(
+    (entry) => entry?.shareId !== candidate.shareId && entry?.status === "public"
+  );
+  const candidateTitle = normalizeComparisonText(candidate.title);
+  const candidateTokens = tokenizeForSimilarity(
+    `${candidate.title} ${candidate.summary} ${truncate(candidate.narrative, 180)}`
+  );
+
+  let bestMatch = null;
+  let bestScore = 0;
+
+  for (const scenario of publicScenarios) {
+    const titleMatch = candidateTitle && candidateTitle === normalizeComparisonText(scenario.title);
+    if (titleMatch) {
+      return scenario;
+    }
+
+    const scenarioTokens = tokenizeForSimilarity(
+      `${scenario.title} ${scenario.summary} ${truncate(scenario.narrative, 180)}`
+    );
+    const similarity = calculateTokenSimilarity(candidateTokens, scenarioTokens);
+    if (similarity > bestScore) {
+      bestScore = similarity;
+      bestMatch = scenario;
+    }
+  }
+
+  return bestScore >= 0.82 ? bestMatch : null;
+}
+
+function detectScenarioAdRiskFlags({ title, subtitle, narrative }) {
+  const text = [title, subtitle, narrative].filter(Boolean).join(" ").toLowerCase();
+  const flags = [];
+
+  if (
+    /(порно|эротик|xxx|sex\b|onlyfans|насилован|rape\b|incest|педофил|child porn)/i.test(text)
+  ) {
+    flags.push("adult");
+  }
+  if (
+    /(расчлен|dismember|gore\b|snuff|каннибал|necrophil|вырванн.*орган|отрезанн.*голов)/i.test(text)
+  ) {
+    flags.push("gore");
+  }
+  if (
+    /(meth lab|варк.*мет|изготовлен.*героин|продаж.*кокаин|selling hard drugs)/i.test(text)
+  ) {
+    flags.push("hard-drugs");
+  }
+  if (hasLivingPersonRisk(title)) {
+    flags.push("living-person");
+  }
+
+  return uniqueStringList(flags);
+}
+
+function hasLivingPersonRisk(title) {
+  const text = oneLine(title);
+  if (!text) return false;
+
+  const hasFullName =
+    /[A-ZА-ЯЁ][a-zа-яё]+(?:\s+[A-ZА-ЯЁ][a-zа-яё]+){1,2}/.test(text);
+  const hasModernYear = /\b(19[89][0-9]|20[0-9]{2})\b/.test(text);
+  const hasContemporaryRole =
+    /(президент|блогер|рэпер|актер|депутат|выбор|election|president|blogger|rapper|actor)/i.test(text);
+
+  return hasFullName && hasModernYear && hasContemporaryRole;
+}
+
+function hasLowIntentScenario({ title, subtitle, narrative }) {
+  const text = oneLine([title, subtitle, truncate(narrative, 120)].filter(Boolean).join(" "));
+  if (text.length < 18) {
+    return true;
+  }
+  if (/(https?:\/\/|www\.|t\.me\/|telegram|подпиш|subscribe|промокод|promo code)/i.test(text)) {
+    return true;
+  }
+
+  const tokens = tokenizeForSimilarity(text);
+  return tokens.length < 3;
+}
+
+function tokenizeForSimilarity(value) {
+  const stopwords = new Set([
+    "what", "if", "the", "and", "with", "this", "that", "into", "from",
+    "что", "если", "это", "как", "для", "при", "без", "или", "про", "над",
+  ]);
+  return oneLine(value)
+    .toLowerCase()
+    .replace(/ё/g, "е")
+    .match(/[a-zа-я0-9]{2,}/g)
+    ?.filter((token) => !stopwords.has(token)) || [];
+}
+
+function normalizeComparisonText(value) {
+  return tokenizeForSimilarity(value).join(" ");
+}
+
+function calculateTokenSimilarity(left, right) {
+  const leftSet = new Set(left);
+  const rightSet = new Set(right);
+  if (leftSet.size === 0 || rightSet.size === 0) {
+    return 0;
+  }
+
+  let intersection = 0;
+  for (const token of leftSet) {
+    if (rightSet.has(token)) {
+      intersection += 1;
+    }
+  }
+
+  const union = new Set([...leftSet, ...rightSet]).size;
+  return union > 0 ? intersection / union : 0;
+}
+
+function cleanupAutomaticManifestEntry(entry) {
+  const next = { ...entry };
+  if (!next.title) delete next.title;
+  if (!next.subtitle) delete next.subtitle;
+  if (!next.summary) delete next.summary;
+  if (!next.description) delete next.description;
+  if (!next.era) delete next.era;
+  if (!next.tone) delete next.tone;
+  if (!Array.isArray(next.countries) || next.countries.length === 0) delete next.countries;
+  if (!Array.isArray(next.themes) || next.themes.length === 0) delete next.themes;
+  if (!Array.isArray(next.relatedSlugs) || next.relatedSlugs.length === 0) delete next.relatedSlugs;
+  if (!next.lang || next.lang === "ru") delete next.lang;
+  return next;
+}
+
+function normalizeDayKeyList(values) {
+  const list = Array.isArray(values) ? values : [];
+  return uniqueStringList(
+    list
+      .map((value) => normalizeIsoDate(value))
+      .filter(Boolean)
+  ).slice(-30);
+}
+
+function appendDayKey(days, nextDay) {
+  return normalizeDayKeyList([...(Array.isArray(days) ? days : []), nextDay]);
+}
+
+function uniqueStringList(values) {
+  return Array.from(new Set((values || []).map((value) => oneLine(value)).filter(Boolean)));
+}
+
+function clampNumber(value, min, max) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) {
+    return min;
+  }
+  return Math.min(max, Math.max(min, number));
+}
+
+function normalizeIsoTimestamp(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return "";
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  return date.toISOString();
+}
+
+function getAgeInDays(value) {
+  const raw = String(value || "").trim();
+  if (!raw) return 0;
+  const date = new Date(raw);
+  if (Number.isNaN(date.getTime())) {
+    return 0;
+  }
+  const diffMs = Date.now() - date.getTime();
+  return Math.max(0, Math.floor(diffMs / (24 * 60 * 60 * 1000)));
+}
+
 function normalizeOptionalLanguage(value) {
   const raw = String(value || "").trim().toLowerCase();
   if (raw === "en") return "en";
@@ -2587,6 +3402,28 @@ function resolvePublicScenariosFile() {
   const configured = String(process.env.PUBLIC_SCENARIOS_FILE || "").trim();
   if (!configured) {
     return path.join(REPO_DATA_DIR, "public-scenarios.json");
+  }
+  if (path.isAbsolute(configured)) {
+    return configured;
+  }
+  return path.resolve(process.cwd(), configured);
+}
+
+function resolveAutoPublicScenariosFile() {
+  const configured = String(process.env.AUTO_PUBLIC_SCENARIOS_FILE || "").trim();
+  if (!configured) {
+    return path.join(RUNTIME_DATA_DIR, "auto-public-scenarios.json");
+  }
+  if (path.isAbsolute(configured)) {
+    return configured;
+  }
+  return path.resolve(process.cwd(), configured);
+}
+
+function resolveScenarioEngagementFile() {
+  const configured = String(process.env.SCENARIO_ENGAGEMENT_FILE || "").trim();
+  if (!configured) {
+    return path.join(RUNTIME_DATA_DIR, "scenario-engagement.json");
   }
   if (path.isAbsolute(configured)) {
     return configured;
@@ -2722,12 +3559,18 @@ async function readShareLinks() {
   return parsed || {};
 }
 
+async function readScenarioEngagementStore() {
+  const parsed = await readJsonObjectFile(SCENARIO_ENGAGEMENT_FILE);
+  return parsed || {};
+}
+
 async function writeShareLinks(store) {
   await ensureShareLinksStorageReady();
-  await fsp.mkdir(RUNTIME_DATA_DIR, { recursive: true });
-  const tempPath = `${SHARE_LINKS_FILE}.tmp`;
-  await fsp.writeFile(tempPath, JSON.stringify(store), "utf-8");
-  await fsp.rename(tempPath, SHARE_LINKS_FILE);
+  await writeJsonFileAtomic(SHARE_LINKS_FILE, store, false);
+}
+
+async function writeScenarioEngagementStore(store) {
+  await writeJsonFileAtomic(SCENARIO_ENGAGEMENT_FILE, store, true);
 }
 
 function findExistingShareId(store, scenario) {
@@ -2770,6 +3613,19 @@ async function ensureShareLinksStorageReady() {
   );
 }
 
+async function readJsonArrayFile(filePath) {
+  try {
+    const raw = await fsp.readFile(filePath, "utf-8");
+    const parsed = JSON.parse(raw);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch (error) {
+    if (error?.code === "ENOENT") {
+      return [];
+    }
+    throw error;
+  }
+}
+
 async function readJsonObjectFile(filePath) {
   try {
     const raw = await fsp.readFile(filePath, "utf-8");
@@ -2786,6 +3642,14 @@ async function readJsonObjectFile(filePath) {
   }
 }
 
+async function writeJsonFileAtomic(filePath, value, pretty = true) {
+  await fsp.mkdir(path.dirname(filePath), { recursive: true });
+  const tempPath = `${filePath}.${process.pid}.tmp`;
+  const content = pretty ? JSON.stringify(value, null, 2) : JSON.stringify(value);
+  await fsp.writeFile(tempPath, content, "utf-8");
+  await fsp.rename(tempPath, filePath);
+}
+
 async function fileExists(filePath) {
   try {
     await fsp.access(filePath, fs.constants.F_OK);
@@ -2800,6 +3664,56 @@ function normalizeShortId(value) {
   if (!id) return "";
   if (!/^[A-Za-z0-9_-]{4,32}$/.test(id)) return "";
   return id;
+}
+
+function slugify(value) {
+  return oneLine(value)
+    .toLowerCase()
+    .replace(/[^a-z0-9а-яё]+/gi, "-")
+    .replace(/^-+|-+$/g, "")
+    .replace(/-+/g, "-")
+    .replace(/[а-яё]/gi, transliterateRussian)
+    .replace(/-+/g, "-")
+    .replace(/^-+|-+$/g, "");
+}
+
+function transliterateRussian(char) {
+  const map = {
+    а: "a",
+    б: "b",
+    в: "v",
+    г: "g",
+    д: "d",
+    е: "e",
+    ё: "e",
+    ж: "zh",
+    з: "z",
+    и: "i",
+    й: "y",
+    к: "k",
+    л: "l",
+    м: "m",
+    н: "n",
+    о: "o",
+    п: "p",
+    р: "r",
+    с: "s",
+    т: "t",
+    у: "u",
+    ф: "f",
+    х: "h",
+    ц: "ts",
+    ч: "ch",
+    ш: "sh",
+    щ: "sch",
+    ъ: "",
+    ы: "y",
+    ь: "",
+    э: "e",
+    ю: "yu",
+    я: "ya",
+  };
+  return map[char.toLowerCase()] || "";
 }
 
 function decodeScenarioPayload(encoded) {
@@ -2834,6 +3748,27 @@ function truncate(value, maxLength) {
   const text = oneLine(value);
   if (text.length <= maxLength) return text;
   return `${text.slice(0, maxLength - 1).trimEnd()}…`;
+}
+
+function buildScenarioDescription(summary, narrative) {
+  const preferred = oneLine(summary);
+  if (preferred.length >= AUTO_MIN_DESCRIPTION_LENGTH) {
+    return preferred;
+  }
+
+  const sentences = extractNarrativeSentences(narrative);
+  const combined = truncate(sentences.slice(0, 2).join(" "), 180);
+  if (combined.length >= AUTO_MIN_DESCRIPTION_LENGTH) {
+    return combined;
+  }
+
+  return truncate(`${preferred} ${combined}`.trim(), 180);
+}
+
+function extractNarrativeSentences(value) {
+  const text = oneLine(value);
+  if (!text) return [];
+  return text.match(/[^.!?]+[.!?]+/g)?.map((item) => item.trim()) || [text];
 }
 
 function wrapText(value, maxChars, maxLines) {
