@@ -2058,25 +2058,6 @@ function renderHomeLead() {
             <a id="hero-primary-link" class="hero-link hero-link-primary" href="#workspace">Создать сценарий</a>
             <a id="hero-secondary-link" class="hero-link" href="#support-section">Поддержать проект</a>
           </div>
-          <div class="hero-stats" aria-label="Преимущества проекта">
-            <div class="hero-stat">
-              <span class="hero-stat-value">5</span>
-              <span id="stat-label-1" class="hero-stat-label">режимов генерации</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-value">RU / EN</span>
-              <span id="stat-label-2" class="hero-stat-label">переключение языка</span>
-            </div>
-            <div class="hero-stat">
-              <span class="hero-stat-value">PNG</span>
-              <span id="stat-label-3" class="hero-stat-label">экспорт карточек</span>
-            </div>
-          </div>
-          <ul class="hero-features">
-            <li id="hero-feature-1">Тот же генератор, но с более сильной подачей</li>
-            <li id="hero-feature-2">5 режимов альтернативной истории</li>
-            <li id="hero-feature-3">Готовые карточки для шаринга</li>
-          </ul>
         </div>
       </section>`;
 }
